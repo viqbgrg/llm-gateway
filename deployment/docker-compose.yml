@@ -1,0 +1,45 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: llm_gateway
+      MYSQL_USER: llm_gateway
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-llm_gateway}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+    ports: ["3306:3306"]
+    volumes: ["mysql-data:/var/lib/mysql"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  redis:
+    image: redis:7.4-alpine
+    ports: ["6379:6379"]
+    volumes: ["redis-data:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  llm-gateway:
+    build:
+      context: ..
+      dockerfile: deployment/docker/Dockerfile
+    ports: ["8080:8080"]
+    environment:
+      SPRING_R2DBC_URL: r2dbc:mysql://mysql:3306/llm_gateway
+      SPRING_R2DBC_USERNAME: llm_gateway
+      SPRING_R2DBC_PASSWORD: ${MYSQL_PASSWORD:-llm_gateway}
+      SPRING_FLYWAY_URL: jdbc:mysql://mysql:3306/llm_gateway
+      SPRING_FLYWAY_USER: llm_gateway
+      SPRING_FLYWAY_PASSWORD: ${MYSQL_PASSWORD:-llm_gateway}
+      SPRING_REDIS_HOST: redis
+      GATEWAY_API_KEY: ${GATEWAY_API_KEY:-dev-gateway-key}
+    depends_on:
+      mysql: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+volumes:
+  mysql-data:
+  redis-data:

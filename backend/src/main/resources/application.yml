@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: llm-gateway
+  r2dbc:
+    url: ${SPRING_R2DBC_URL:r2dbc:mysql://localhost:3306/llm_gateway}
+    username: ${SPRING_R2DBC_USERNAME:llm_gateway}
+    password: ${SPRING_R2DBC_PASSWORD:llm_gateway}
+  flyway:
+    url: ${SPRING_FLYWAY_URL:jdbc:mysql://localhost:3306/llm_gateway}
+    user: ${SPRING_FLYWAY_USER:llm_gateway}
+    password: ${SPRING_FLYWAY_PASSWORD:llm_gateway}
+    enabled: ${SPRING_FLYWAY_ENABLED:true}
+  data:
+    redis:
+      host: ${SPRING_REDIS_HOST:localhost}
+      port: ${SPRING_REDIS_PORT:6379}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+server:
+  port: ${SERVER_PORT:8080}
+gateway:
+  api-key: ${GATEWAY_API_KEY:dev-gateway-key}
+  redis-key-prefix: llm-gateway
+  routing:
+    strategy: ADAPTIVE
+    hedge-delay: 800ms
+    max-hedge-count: 1
+  resilience:
+    failure-threshold: 8
+    cooldown: 30s
+  discovery:
+    enabled: true
+    default-interval: 30m
