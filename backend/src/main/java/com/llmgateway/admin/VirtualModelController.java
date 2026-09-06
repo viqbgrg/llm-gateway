@@ -1,5 +1,6 @@
 package com.llmgateway.admin;
 
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
@@ -12,7 +13,7 @@ public class VirtualModelController {
     public VirtualModelController(VirtualModelService service) { this.service = service; }
     @GetMapping public Flux<VirtualModelEntity> list() { return service.list(); }
     @GetMapping("/{id}") public Mono<VirtualModelEntity> get(@PathVariable String id) { return service.get(id); }
-    @PostMapping public Mono<VirtualModelEntity> create(@RequestBody AdminDtos.VirtualModelRequest request) { return service.save(null, request); }
-    @PutMapping("/{id}") public Mono<VirtualModelEntity> update(@PathVariable String id, @RequestBody AdminDtos.VirtualModelRequest request) { return service.save(id, request); }
+    @PostMapping public Mono<VirtualModelEntity> create(@Valid @RequestBody AdminDtos.VirtualModelRequest request) { return service.save(null, request); }
+    @PutMapping("/{id}") public Mono<VirtualModelEntity> update(@PathVariable String id, @Valid @RequestBody AdminDtos.VirtualModelRequest request) { return service.save(id, request); }
     @DeleteMapping("/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public Mono<Void> delete(@PathVariable String id) { return service.delete(id); }
 }

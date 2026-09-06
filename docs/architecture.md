@@ -18,4 +18,4 @@ The intended request path is `Client Protocol -> Internal LLM IR -> Virtual Mode
 
 ## Phase 1 boundary
 
-The protocol, routing, health, circuit breaker and discovery interfaces are present as typed contracts. Their implementations will be introduced one phase at a time so configuration data and runtime state do not become coupled.
+The protocol, routing, health and circuit breaker interfaces are present as typed contracts. The discovery boundary has an HTTP catalog reader used by explicit admin connection tests and model imports; automatic discovery scheduling and model-removal reconciliation remain deferred. No inference forwarding is performed in Phase 1.

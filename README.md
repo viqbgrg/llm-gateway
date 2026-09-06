@@ -4,7 +4,7 @@
 
 ## Phase 1
 
-The first phase delivers a runnable Spring WebFlux backend, MySQL/Flyway persistence, Redis runtime namespace, a Vue 3 administration shell, and CRUD APIs for providers, provider models, virtual models, and bindings. Inference forwarding, protocol translation, streaming, routing and discovery execution are intentionally reserved for later phases.
+The first phase delivers a runnable Spring WebFlux backend, MySQL/Flyway persistence, Redis runtime namespace, and a Vue 3 administration UI with CRUD APIs, editing and status controls for providers, provider models, virtual models and bindings. Provider connection tests and manual model imports are available. Inference forwarding, protocol translation, streaming, routing and automatic discovery scheduling are reserved for later phases.
 
 ## Architecture
 
@@ -19,6 +19,8 @@ Clients will eventually flow through `Client Protocol -> Internal LLM IR -> Virt
 ```
 
 The backend listens on `http://localhost:8080`. Configure database and Redis through environment variables; no provider API key is committed to the repository.
+
+Backend integration tests require a running Docker daemon and start their own isolated MySQL and Redis containers. See [Development](docs/development.md) for full Docker and browser verification.
 
 ## Admin API
 
@@ -35,7 +37,7 @@ curl -H 'Authorization: Bearer dev-gateway-key' http://localhost:8080/api/admin/
 ## Docker
 
 ```bash
-docker compose -f deployment/docker-compose.yml up -d
+docker compose up --build -d --wait
 ```
 
 This starts `llm-gateway`, MySQL 8 and Redis. Set `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD` and `GATEWAY_API_KEY` through the environment for non-development use.
@@ -48,3 +50,4 @@ This starts `llm-gateway`, MySQL 8 and Redis. Set `MYSQL_PASSWORD`, `MYSQL_ROOT_
 - [Providers](docs/provider.md)
 - [Model discovery](docs/model-discovery.md)
 - [Development](docs/development.md)
+- [Implementation roadmap](docs/roadmap.md)

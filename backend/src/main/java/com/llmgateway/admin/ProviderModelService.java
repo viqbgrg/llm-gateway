@@ -9,16 +9,32 @@ import java.time.Instant;
 @Service
 public class ProviderModelService {
     private final ProviderModelRepository repository;
-    public ProviderModelService(ProviderModelRepository repository) { this.repository = repository; }
+    private final ProviderRepository providers;
+    private final AdminValidation validation;
+    public ProviderModelService(ProviderModelRepository repository, ProviderRepository providers, AdminValidation validation) {
+        this.repository = repository;
+        this.providers = providers;
+        this.validation = validation;
+    }
     public Flux<ProviderModelEntity> list(String providerId) { return providerId == null ? repository.findAll() : repository.findByProviderId(providerId); }
-    public Mono<ProviderModelEntity> get(String id) { return repository.findById(id); }
+    public Mono<ProviderModelEntity> get(String id) { return AdminValidation.required(repository.findById(id), "Provider model"); }
     public Mono<ProviderModelEntity> save(String id, AdminDtos.ProviderModelRequest r) {
-        return repository.findById(id == null ? "" : id).defaultIfEmpty(new ProviderModelEntity(AdminMapping.id(id), r.providerId(),
-                r.modelName(), r.displayName(), ProviderModelStatus.NEW, "[]", null, Instant.now(), Instant.now(), Instant.now(), Instant.now(), null))
-            .map(e -> new ProviderModelEntity(e.id(), r.providerId(), r.modelName(), r.displayName(),
+        validation.json(r.capabilities(), "capabilities", true);
+        validation.json(r.rawMetadata(), "rawMetadata", false);
+        Mono<ProviderModelEntity> current = id == null
+                ? Mono.just(new ProviderModelEntity(AdminMapping.id(null), r.providerId(), r.modelName(), r.displayName(),
+                        ProviderModelStatus.NEW, "[]", null, Instant.now(), Instant.now(), Instant.now(), Instant.now(), null))
+                : get(id);
+        return AdminValidation.required(providers.findById(r.providerId()), "Provider").then(current)
+            .map(e -> {
+                if (!e.providerId().equals(r.providerId())) {
+                    throw new IllegalArgumentException("The provider of an existing model cannot be changed");
+                }
+                return new ProviderModelEntity(e.id(), r.providerId(), r.modelName(), r.displayName(),
                 r.status() == null ? e.status() : r.status(), r.capabilities() == null ? e.capabilities() : r.capabilities(),
-                r.rawMetadata() == null ? e.rawMetadata() : r.rawMetadata(), e.firstSeenAt(), Instant.now(), e.createdAt(), Instant.now(), e.version()))
+                r.rawMetadata() == null ? e.rawMetadata() : r.rawMetadata(), e.firstSeenAt(), e.lastSeenAt(), e.createdAt(), Instant.now(), e.version());
+            })
             .flatMap(repository::save);
     }
-    public Mono<Void> delete(String id) { return repository.deleteById(id); }
+    public Mono<Void> delete(String id) { return get(id).flatMap(repository::delete); }
 }

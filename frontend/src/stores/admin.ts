@@ -1,33 +1,77 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-
-export interface Provider { id: string; name: string; baseUrl: string; protocol: string; enabled: boolean }
-export interface VirtualModel { id: string; name: string; displayName: string; enabled: boolean }
-export interface Binding { id: string; virtualModelId: string; providerId: string; providerModelId: string; priority: number; sourceProtocol: string; targetProtocol: string; translationEnabled: boolean }
+import type { Binding, ConnectionTestResult, ModelSyncResult, Provider, ProviderModel, Resource, ResourcePayloads, VirtualModel } from '../types/admin'
 
 export const useAdminStore = defineStore('admin', () => {
   const providers = ref<Provider[]>([])
+  const providerModels = ref<ProviderModel[]>([])
   const virtualModels = ref<VirtualModel[]>([])
   const bindings = ref<Binding[]>([])
   const loading = ref(false)
+  const error = ref('')
   const apiKey = ref(sessionStorage.getItem('gateway-admin-key') ?? '')
-  const headers = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey.value}` })
   async function request<T>(path: string, init?: RequestInit): Promise<T> {
-    const response = await fetch(path, { ...init, headers: { ...headers(), ...init?.headers } })
-    if (!response.ok) throw new Error(response.status === 401 ? 'Invalid admin API key' : `Request failed: ${response.status}`)
+    const response = await fetch(path, {
+      ...init,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey.value}`, ...init?.headers }
+    })
+    if (!response.ok) {
+      const body = await response.json().catch(() => null)
+      const message = response.status === 401 ? 'Invalid admin API key'
+        : typeof body?.message === 'string' ? body.message : `Request failed: ${response.status}`
+      throw new Error(message)
+    }
     return response.status === 204 ? undefined as T : response.json()
   }
   function setApiKey(value: string) { apiKey.value = value; sessionStorage.setItem('gateway-admin-key', value) }
   async function refresh() {
     loading.value = true
+    error.value = ''
     try {
-      const [p, v, b] = await Promise.all([request<Provider[]>('/api/admin/providers'), request<VirtualModel[]>('/api/admin/virtual-models'), request<Binding[]>('/api/admin/bindings')])
-      providers.value = p; virtualModels.value = v; bindings.value = b
+      const [p, pm, vm, b] = await Promise.all([
+        request<Provider[]>('/api/admin/providers'),
+        request<ProviderModel[]>('/api/admin/provider-models'),
+        request<VirtualModel[]>('/api/admin/virtual-models'),
+        request<Binding[]>('/api/admin/bindings')
+      ])
+      providers.value = p
+      providerModels.value = pm
+      virtualModels.value = vm
+      bindings.value = b
+    } catch (cause) {
+      error.value = cause instanceof Error ? cause.message : 'Unable to load configuration'
+      throw cause
     } finally { loading.value = false }
   }
-  async function createProvider(payload: Record<string, unknown>) { await request('/api/admin/providers', { method: 'POST', body: JSON.stringify(payload) }); await refresh() }
-  async function createVirtualModel(payload: Record<string, unknown>) { await request('/api/admin/virtual-models', { method: 'POST', body: JSON.stringify(payload) }); await refresh() }
-  async function createBinding(payload: Record<string, unknown>) { await request('/api/admin/bindings', { method: 'POST', body: JSON.stringify(payload) }); await refresh() }
-  async function remove(resource: string, id: string) { await request(`/api/admin/${resource}/${id}`, { method: 'DELETE' }); await refresh() }
-  return { providers, virtualModels, bindings, loading, apiKey, setApiKey, refresh, createProvider, createVirtualModel, createBinding, remove }
+
+  async function save<K extends Resource>(resource: K, payload: ResourcePayloads[K], id?: string) {
+    await request(`/api/admin/${resource}${id ? `/${encodeURIComponent(id)}` : ''}`, {
+      method: id ? 'PUT' : 'POST', body: JSON.stringify(payload)
+    })
+    await refreshAfterMutation()
+  }
+
+  async function remove(resource: Resource, id: string) {
+    await request(`/api/admin/${resource}/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    await refreshAfterMutation()
+  }
+
+  function testConnection(id: string) {
+    return request<ConnectionTestResult>(`/api/admin/providers/${encodeURIComponent(id)}/test-connection`, { method: 'POST' })
+  }
+
+  async function syncModels(id: string) {
+    const result = await request<ModelSyncResult>(`/api/admin/providers/${encodeURIComponent(id)}/sync-models`, { method: 'POST' })
+    await refreshAfterMutation()
+    return result
+  }
+
+  async function refreshAfterMutation() {
+    try { await refresh() }
+    catch {
+      // The mutation already succeeded. Keep the refresh error visible without inviting a duplicate submission.
+    }
+  }
+
+  return { providers, providerModels, virtualModels, bindings, loading, error, apiKey, setApiKey, refresh, save, remove, testConnection, syncModels }
 })

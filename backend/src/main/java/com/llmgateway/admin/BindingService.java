@@ -9,19 +9,36 @@ import java.time.Instant;
 @Service
 public class BindingService {
     private final BindingRepository repository;
-    public BindingService(BindingRepository repository) { this.repository = repository; }
+    private final ProviderModelRepository providerModels;
+    private final VirtualModelRepository virtualModels;
+    private final AdminValidation validation;
+    public BindingService(BindingRepository repository, ProviderModelRepository providerModels,
+                          VirtualModelRepository virtualModels, AdminValidation validation) {
+        this.repository = repository;
+        this.providerModels = providerModels;
+        this.virtualModels = virtualModels;
+        this.validation = validation;
+    }
     public Flux<BindingEntity> list(String virtualModelId) { return virtualModelId == null ? repository.findAll() : repository.findByVirtualModelId(virtualModelId); }
-    public Mono<BindingEntity> get(String id) { return repository.findById(id); }
+    public Mono<BindingEntity> get(String id) { return AdminValidation.required(repository.findById(id), "Binding"); }
     public Mono<BindingEntity> save(String id, AdminDtos.BindingRequest r) {
-        return repository.findById(id == null ? "" : id).defaultIfEmpty(new BindingEntity(AdminMapping.id(id), r.virtualModelId(), r.providerId(), r.providerModelId(),
-                true, 0, false, Protocol.CHAT_COMPLETIONS, Protocol.CHAT_COMPLETIONS, null, Instant.now(), Instant.now(), null))
+        validation.json(r.capabilitiesOverride(), "capabilitiesOverride", true);
+        Mono<BindingEntity> current = id == null
+                ? Mono.just(new BindingEntity(AdminMapping.id(null), r.virtualModelId(), r.providerId(), r.providerModelId(),
+                        true, 0, false, Protocol.CHAT_COMPLETIONS, Protocol.CHAT_COMPLETIONS, null, Instant.now(), Instant.now(), null))
+                : get(id);
+        return AdminValidation.required(providerModels.findById(r.providerModelId()), "Provider model")
+            .flatMap(model -> model.providerId().equals(r.providerId())
+                    ? AdminValidation.required(virtualModels.findById(r.virtualModelId()), "Virtual model")
+                    : Mono.error(new IllegalArgumentException("Provider model does not belong to the selected provider")))
+            .then(current)
             .map(e -> new BindingEntity(e.id(), r.virtualModelId(), r.providerId(), r.providerModelId(),
                 r.enabled() == null ? e.enabled() : r.enabled(), r.priority() == null ? e.priority() : r.priority(),
                 r.translationEnabled() == null ? e.translationEnabled() : r.translationEnabled(),
                 r.sourceProtocol() == null ? e.sourceProtocol() : r.sourceProtocol(),
                 r.targetProtocol() == null ? e.targetProtocol() : r.targetProtocol(),
-                r.capabilitiesOverride() == null ? e.capabilitiesOverride() : r.capabilitiesOverride(), e.createdAt(), Instant.now(), e.version()))
+                r.capabilitiesOverride(), e.createdAt(), Instant.now(), e.version()))
             .flatMap(repository::save);
     }
-    public Mono<Void> delete(String id) { return repository.deleteById(id); }
+    public Mono<Void> delete(String id) { return get(id).flatMap(repository::delete); }
 }
