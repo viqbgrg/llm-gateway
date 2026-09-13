@@ -37,6 +37,9 @@ export interface ProviderModel extends ProviderModelPayload {
   id: string
   firstSeenAt: string
   lastSeenAt: string
+  missingCount: number
+  removalSource: string | null
+  firstMissingAt: string | null
 }
 
 export interface VirtualModelPayload {

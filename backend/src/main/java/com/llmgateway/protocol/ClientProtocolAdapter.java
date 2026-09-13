@@ -4,10 +4,11 @@ import com.llmgateway.model.LlmRequest;
 import com.llmgateway.model.LlmResponse;
 import com.llmgateway.model.LlmStreamEvent;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
+import org.springframework.http.codec.ServerSentEvent;
 
-public interface ClientProtocolAdapter {
-    LlmRequest parse(RequestContext context);
-    Mono<Object> encode(LlmResponse response);
-    Flux<Object> encodeStream(Flux<LlmStreamEvent> events);
+/** HTTP reads the DTO; adapters perform only protocol translation. */
+public interface ClientProtocolAdapter<I, O> {
+    LlmRequest parse(I input, RequestContext context);
+    O encode(LlmResponse response);
+    Flux<ServerSentEvent<String>> encodeStream(Flux<LlmStreamEvent> events, String logicalModel);
 }

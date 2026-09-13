@@ -1,0 +1,1 @@
+{"model":"public-model","messages":[{"role":"USER","content":[{"text":"Hi"}]}],"tools":[],"toolChoice":"NONE","reasoning":null,"generation":{"temperature":null,"topP":null,"maxTokens":20,"seed":null,"stopSequences":[]},"responseFormat":null,"stream":false}

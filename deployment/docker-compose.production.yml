@@ -1,0 +1,11 @@
+services:
+  llm-gateway:
+    environment:
+      SPRING_PROFILES_ACTIVE: production
+      GATEWAY_API_KEY: ${GATEWAY_API_KEY:?Set an explicit production gateway key}
+      GATEWAY_CREDENTIALS_ENCRYPTED_WRITES: "true"
+      GATEWAY_CREDENTIALS_ALLOW_LEGACY_READS: ${GATEWAY_ALLOW_LEGACY_READS:-false}
+      GATEWAY_CREDENTIALS_ACTIVE_KEY_ID: ${GATEWAY_ACTIVE_KEY_ID:?Set the active keyring ID}
+      GATEWAY_CREDENTIALS_KEYRING_FILE: /run/secrets/provider-keyring.json
+    volumes:
+      - ${GATEWAY_KEYRING_FILE:?Set the absolute path to a deployment keyring}:/run/secrets/provider-keyring.json:ro

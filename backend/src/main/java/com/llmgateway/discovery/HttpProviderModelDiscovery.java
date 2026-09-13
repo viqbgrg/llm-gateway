@@ -36,13 +36,7 @@ public class HttpProviderModelDiscovery implements ProviderModelDiscovery {
     @Override
     public Mono<List<DiscoveredModel>> discover(Provider provider) {
         return Mono.defer(() -> {
-            HttpClient http = HttpClient.create()
-                    .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, Math.toIntExact(provider.connectTimeout().toMillis()))
-                    .responseTimeout(provider.readTimeout());
-            WebClient client = webClient.clone()
-                    .clientConnector(new ReactorClientHttpConnector(http))
-                    .codecs(codecs -> codecs.defaultCodecs().maxInMemorySize(2 * 1024 * 1024))
-                    .build();
+            WebClient client = new com.llmgateway.provider.ProviderTransport(webClient).client(provider, 2 * 1024 * 1024);
             URI endpoint = endpoint(provider);
             var cursors = new HashSet<String>();
             return readPage(client, endpoint, provider)
@@ -57,7 +51,10 @@ public class HttpProviderModelDiscovery implements ProviderModelDiscovery {
                         return readPage(client, next, provider);
                     })
                     .concatMapIterable(CatalogPage::models)
-                    .collect(LinkedHashMap<String, DiscoveredModel>::new, (models, model) -> models.put(model.modelName(), model))
+                    .collect(LinkedHashMap<String, DiscoveredModel>::new, (models, model) -> {
+                        if (models.size() >= 20_000) throw invalidCatalog();
+                        models.put(model.modelName(), model);
+                    })
                     .map(models -> List.copyOf(models.values()));
         }).timeout(provider.requestTimeout()).onErrorMap(error -> {
             if (error instanceof ProviderAccessException) return error;
@@ -73,14 +70,7 @@ public class HttpProviderModelDiscovery implements ProviderModelDiscovery {
 
     private Mono<CatalogPage> readPage(WebClient client, URI uri, Provider provider) {
         return client.get().uri(uri).accept(MediaType.APPLICATION_JSON)
-                .headers(headers -> {
-                    if (provider.protocol() == Protocol.ANTHROPIC) {
-                        headers.set("anthropic-version", "2023-06-01");
-                        if (provider.apiKey() != null && !provider.apiKey().isBlank()) headers.set("x-api-key", provider.apiKey());
-                    } else if (provider.apiKey() != null && !provider.apiKey().isBlank()) {
-                        headers.setBearerAuth(provider.apiKey());
-                    }
-                })
+                .headers(headers -> com.llmgateway.provider.ProviderTransport.authenticate(headers, provider.protocol(), provider.apiKey()))
                 .exchangeToMono(response -> {
                     if (response.statusCode().is2xxSuccessful()) {
                         return response.bodyToMono(JsonNode.class).switchIfEmpty(Mono.error(invalidCatalog()));
@@ -123,11 +113,7 @@ public class HttpProviderModelDiscovery implements ProviderModelDiscovery {
         if (provider.modelDiscoveryUrl() != null && !provider.modelDiscoveryUrl().isBlank()) {
             return URI.create(provider.modelDiscoveryUrl());
         }
-        URI base = URI.create(provider.baseUrl());
-        String path = base.getRawPath() == null ? "" : base.getRawPath().replaceAll("/+$", "");
-        return UriComponentsBuilder.fromUri(base)
-                .replacePath(path + (path.endsWith("/v1") ? "/models" : "/v1/models"))
-                .build(true).toUri();
+        return com.llmgateway.provider.ProviderTransport.endpoint(provider.baseUrl(), "models");
     }
 
     private static ProviderAccessException invalidCatalog() {

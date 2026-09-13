@@ -11,10 +11,12 @@ public class ProviderModelService {
     private final ProviderModelRepository repository;
     private final ProviderRepository providers;
     private final AdminValidation validation;
-    public ProviderModelService(ProviderModelRepository repository, ProviderRepository providers, AdminValidation validation) {
+    private final com.llmgateway.infrastructure.RuntimeStateCleanup runtime;
+    public ProviderModelService(ProviderModelRepository repository, ProviderRepository providers, AdminValidation validation, com.llmgateway.infrastructure.RuntimeStateCleanup runtime) {
         this.repository = repository;
         this.providers = providers;
         this.validation = validation;
+        this.runtime = runtime;
     }
     public Flux<ProviderModelEntity> list(String providerId) { return providerId == null ? repository.findAll() : repository.findByProviderId(providerId); }
     public Mono<ProviderModelEntity> get(String id) { return AdminValidation.required(repository.findById(id), "Provider model"); }
@@ -32,9 +34,13 @@ public class ProviderModelService {
                 }
                 return new ProviderModelEntity(e.id(), r.providerId(), r.modelName(), r.displayName(),
                 r.status() == null ? e.status() : r.status(), r.capabilities() == null ? e.capabilities() : r.capabilities(),
-                r.rawMetadata() == null ? e.rawMetadata() : r.rawMetadata(), e.firstSeenAt(), e.lastSeenAt(), e.createdAt(), Instant.now(), e.version());
+                r.rawMetadata() == null ? e.rawMetadata() : r.rawMetadata(), e.firstSeenAt(), e.lastSeenAt(), e.createdAt(), Instant.now(), e.version(),
+                r.status() != null && r.status() != e.status() ? 0 : e.missingCount(),
+                r.status() != null && r.status() != e.status() ? null : e.firstMissingAt(), e.observedGeneration(),
+                r.status() == null ? e.removalSource() : r.status() == ProviderModelStatus.REMOVED || r.status() == ProviderModelStatus.DISABLED ? "MANUAL" : null,
+                r.status() == null ? e.preRemovalStatus() : null, e.routingVersion() + 1);
             })
-            .flatMap(repository::save);
+            .flatMap(repository::save).flatMap(saved -> runtime.modelChanged(saved.providerId()).thenReturn(saved));
     }
-    public Mono<Void> delete(String id) { return get(id).flatMap(repository::delete); }
+    public Mono<Void> delete(String id) { return get(id).flatMap(repository::delete).then(runtime.modelDeleted(id)); }
 }

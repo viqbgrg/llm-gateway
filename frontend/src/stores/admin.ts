@@ -73,5 +73,5 @@ export const useAdminStore = defineStore('admin', () => {
     }
   }
 
-  return { providers, providerModels, virtualModels, bindings, loading, error, apiKey, setApiKey, refresh, save, remove, testConnection, syncModels }
+  return { providers, providerModels, virtualModels, bindings, loading, error, apiKey, setApiKey, refresh, save, remove, testConnection, syncModels, request }
 })

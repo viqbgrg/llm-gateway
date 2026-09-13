@@ -12,12 +12,22 @@ public class BindingService {
     private final ProviderModelRepository providerModels;
     private final VirtualModelRepository virtualModels;
     private final AdminValidation validation;
+    private final ProviderRepository providers;
+    private final com.llmgateway.protocol.TranslationValidator translation;
+    private final com.llmgateway.infrastructure.RuntimeStateCleanup runtime;
+    private final org.springframework.transaction.reactive.TransactionalOperator transaction;
     public BindingService(BindingRepository repository, ProviderModelRepository providerModels,
-                          VirtualModelRepository virtualModels, AdminValidation validation) {
+                          VirtualModelRepository virtualModels, AdminValidation validation, ProviderRepository providers,
+                          com.llmgateway.protocol.TranslationValidator translation, com.llmgateway.infrastructure.RuntimeStateCleanup runtime,
+                          org.springframework.transaction.ReactiveTransactionManager transactionManager) {
         this.repository = repository;
         this.providerModels = providerModels;
         this.virtualModels = virtualModels;
         this.validation = validation;
+        this.providers = providers;
+        this.translation = translation;
+        this.runtime = runtime;
+        this.transaction = org.springframework.transaction.reactive.TransactionalOperator.create(transactionManager);
     }
     public Flux<BindingEntity> list(String virtualModelId) { return virtualModelId == null ? repository.findAll() : repository.findByVirtualModelId(virtualModelId); }
     public Mono<BindingEntity> get(String id) { return AdminValidation.required(repository.findById(id), "Binding"); }
@@ -38,7 +48,10 @@ public class BindingService {
                 r.sourceProtocol() == null ? e.sourceProtocol() : r.sourceProtocol(),
                 r.targetProtocol() == null ? e.targetProtocol() : r.targetProtocol(),
                 r.capabilitiesOverride(), e.createdAt(), Instant.now(), e.version()))
-            .flatMap(repository::save);
+            .flatMap(binding -> AdminValidation.required(providers.findByIdForUpdate(binding.providerId()), "Provider").flatMap(provider -> {
+                translation.validate(binding.sourceProtocol(), binding.targetProtocol(), provider.protocol(), binding.translationEnabled());
+                return repository.save(binding);
+            })).as(transaction::transactional).flatMap(saved -> runtime.bindingChanged(saved).thenReturn(saved));
     }
-    public Mono<Void> delete(String id) { return get(id).flatMap(repository::delete); }
+    public Mono<Void> delete(String id) { return get(id).flatMap(binding -> repository.delete(binding).then(runtime.bindingDeleted(binding))); }
 }

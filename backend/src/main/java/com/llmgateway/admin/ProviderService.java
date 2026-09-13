@@ -9,7 +9,19 @@ import java.time.Instant;
 @Service
 public class ProviderService {
     private final ProviderRepository repository;
-    public ProviderService(ProviderRepository repository) { this.repository = repository; }
+    private final BindingRepository bindings;
+    private final com.llmgateway.infrastructure.credentials.CredentialService credentials;
+    private final com.llmgateway.protocol.TranslationValidator translation;
+    private final com.llmgateway.infrastructure.RuntimeStateCleanup runtime;
+    private final org.springframework.transaction.reactive.TransactionalOperator transaction;
+    public ProviderService(ProviderRepository repository, BindingRepository bindings,
+                           com.llmgateway.infrastructure.credentials.CredentialService credentials,
+                           com.llmgateway.protocol.TranslationValidator translation, com.llmgateway.infrastructure.RuntimeStateCleanup runtime,
+                           org.springframework.transaction.ReactiveTransactionManager transactionManager) {
+        this.repository = repository; this.bindings = bindings; this.credentials = credentials; this.translation = translation;
+        this.runtime = runtime;
+        this.transaction = org.springframework.transaction.reactive.TransactionalOperator.create(transactionManager);
+    }
     public Flux<AdminDtos.ProviderResponse> list() { return repository.findAll().map(AdminMapping::providerResponse); }
     public Mono<AdminDtos.ProviderResponse> get(String id) { return AdminValidation.required(repository.findById(id), "Provider").map(AdminMapping::providerResponse); }
     public Mono<AdminDtos.ProviderResponse> save(String id, AdminDtos.ProviderRequest r) {
@@ -21,22 +33,24 @@ public class ProviderService {
                 ? Mono.just(new ProviderEntity(AdminMapping.id(null), null, null, null, true,
                         Protocol.CHAT_COMPLETIONS, 5000, 30000, 60000, 0, false, null, 1800000,
                         Instant.now(), Instant.now(), null))
-                : AdminValidation.required(repository.findById(id), "Provider");
+                : AdminValidation.required(repository.findByIdForUpdate(id), "Provider");
         return current
-            .map(existing -> new ProviderEntity(existing.id(), r.name(), r.baseUrl(), apiKey(r.apiKey(), existing.apiKey()),
+            .flatMap(existing -> {
+                var key = credentials.store(existing.id(), r.apiKey(), existing.apiKey(), existing.apiKeyCiphertext());
+                Protocol protocol = r.protocol() == null ? existing.protocol() : r.protocol();
+                return bindings.findByProviderId(existing.id()).doOnNext(binding -> {
+                    if (protocol != existing.protocol()) translation.validate(binding.sourceProtocol(), binding.targetProtocol(), protocol, binding.translationEnabled());
+                }).then(Mono.just(new ProviderEntity(existing.id(), r.name(), r.baseUrl(), key.plaintext(),
                 r.enabled() == null ? existing.enabled() : r.enabled(), r.protocol() == null ? existing.protocol() : r.protocol(),
                 value(r.connectTimeoutMs(), existing.connectTimeoutMs()), value(r.readTimeoutMs(), existing.readTimeoutMs()),
                 value(r.requestTimeoutMs(), existing.requestTimeoutMs()), value(r.maxRetries(), existing.maxRetries()),
                 r.modelDiscoveryEnabled() == null ? existing.modelDiscoveryEnabled() : r.modelDiscoveryEnabled(),
                 r.modelDiscoveryUrl() == null ? existing.modelDiscoveryUrl() : r.modelDiscoveryUrl(),
-                value(r.modelDiscoveryIntervalMs(), existing.modelDiscoveryIntervalMs()), existing.createdAt(), Instant.now(), existing.version()))
-            .flatMap(repository::save).map(AdminMapping::providerResponse);
+                value(r.modelDiscoveryIntervalMs(), existing.modelDiscoveryIntervalMs()), existing.createdAt(), Instant.now(), existing.version(), key.ciphertext())));
+            })
+            .flatMap(repository::save).as(transaction::transactional).flatMap(saved -> runtime.providerChanged(saved.id()).thenReturn(saved)).map(AdminMapping::providerResponse);
     }
-    public Mono<Void> delete(String id) { return AdminValidation.required(repository.findById(id), "Provider").flatMap(repository::delete); }
-    private static String apiKey(String value, String existing) {
-        if (value == null || "***".equals(value)) return existing;
-        return value.isBlank() ? null : value;
-    }
+    public Mono<Void> delete(String id) { return AdminValidation.required(repository.findById(id), "Provider").flatMap(repository::delete).then(runtime.providerDeleted(id)); }
     private static long value(Long value, long fallback) { return value == null ? fallback : value; }
     private static int value(Integer value, int fallback) { return value == null ? fallback : value; }
 }

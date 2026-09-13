@@ -1,6 +1,6 @@
 package com.llmgateway.protocol;
 
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.server.reactive.ServerHttpRequest;
+import com.llmgateway.model.Protocol;
+import java.time.Instant;
 
-public record RequestContext(ServerHttpRequest request, HttpHeaders headers, String requestId) {}
+public record RequestContext(String requestId, Protocol protocol, Instant enteredAt, long startedNanos) {}

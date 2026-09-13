@@ -40,6 +40,10 @@ final class AdminValidation {
         if (value == null) {
             return;
         }
+        if (arrayRequired) {
+            com.llmgateway.routing.CapabilityChecker.parse(value);
+            return;
+        }
         try {
             JsonNode node = objectMapper.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(value);
             if (node != null && (!arrayRequired || node.isArray())) {

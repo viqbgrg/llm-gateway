@@ -6,6 +6,6 @@ public interface HealthManager {
     Mono<HealthSnapshot> provider(String providerId);
     Mono<HealthSnapshot> binding(String bindingId);
     Mono<HealthSnapshot> model(String providerModelId);
-    Mono<Void> recordSuccess(String bindingId, long latencyMs);
-    Mono<Void> recordFailure(String bindingId, boolean timeout);
+    Mono<Void> record(String bindingId, String providerId, String modelId, AttemptOutcome outcome, long latencyMs,
+                      Long ttftMs, boolean streaming, long penaltyHalfLifeMs);
 }

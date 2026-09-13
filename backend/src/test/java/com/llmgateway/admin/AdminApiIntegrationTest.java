@@ -3,6 +3,8 @@ package com.llmgateway.admin;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.llmgateway.infrastructure.SyntheticKeyring;
+import com.llmgateway.infrastructure.credentials.CredentialService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +37,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "gateway.api-key=fixture-gateway-key",
+        "gateway.discovery.enabled=false",
+        "gateway.credentials.encrypted-writes=true",
+        "gateway.credentials.active-key-id=fixture",
         "spring.flyway.enabled=true",
         "management.endpoint.health.show-details=always"
 })
@@ -58,12 +63,14 @@ class AdminApiIntegrationTest {
         properties.add("spring.flyway.password", MYSQL::getPassword);
         properties.add("spring.data.redis.host", REDIS::getHost);
         properties.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
+        properties.add("gateway.credentials.keyring-file", SyntheticKeyring::file);
     }
 
     @Autowired WebTestClient client;
     @Autowired DatabaseClient database;
     @Autowired ObjectMapper mapper;
     @Autowired ProviderRepository providers;
+    @Autowired CredentialService credentials;
     private WebTestClient api;
     private DisposableServer upstream;
     private final AtomicInteger upstreamStatus = new AtomicInteger(200);
@@ -74,8 +81,10 @@ class AdminApiIntegrationTest {
         api = client.mutate().defaultHeaders(headers -> headers.setBearerAuth("fixture-gateway-key"))
                 .responseTimeout(Duration.ofSeconds(10)).build();
         database.sql("DELETE FROM virtual_model_bindings").then()
+                .then(database.sql("DELETE FROM model_rules").then())
                 .then(database.sql("DELETE FROM provider_models").then())
                 .then(database.sql("DELETE FROM virtual_models").then())
+                .then(database.sql("DELETE FROM routing_policies").then())
                 .then(database.sql("DELETE FROM providers").then())
                 .block(Duration.ofSeconds(10));
     }
@@ -87,9 +96,9 @@ class AdminApiIntegrationTest {
 
     @Test
     void migratesMysqlAndConnectsToBothConfigurationAndRuntimeStorage() {
-        Long migrations = database.sql("SELECT COUNT(*) AS total FROM flyway_schema_history WHERE success = 1")
-                .map((row, metadata) -> row.get("total", Long.class)).one().block(Duration.ofSeconds(5));
-        assertThat(migrations).isEqualTo(1);
+        List<String> migrations = database.sql("SELECT version FROM flyway_schema_history WHERE success = 1 ORDER BY installed_rank")
+                .map((row, metadata) -> row.get("version", String.class)).all().collectList().block(Duration.ofSeconds(5));
+        assertThat(migrations).containsExactly("1", "2", "3", "4", "5");
         client.get().uri("/actuator/health").exchange().expectStatus().isOk()
                 .expectBody().jsonPath("$.status").isEqualTo("UP")
                 .jsonPath("$.components.r2dbc.status").isEqualTo("UP")
@@ -174,6 +183,8 @@ class AdminApiIntegrationTest {
         assertThat(storedKey(id)).isEqualTo("fixture-provider-key");
         edit.remove("apiKey");
         update("providers", id, edit);
+        assertThat(storedKey(id)).isEqualTo("fixture-provider-key");
+        update("providers", id, edit.putNull("apiKey"));
         assertThat(storedKey(id)).isEqualTo("fixture-provider-key");
         assertThat(update("providers", id, edit.put("apiKey", "replacement-fixture-key")).get("apiKey").asText()).isEqualTo("***");
         assertThat(storedKey(id)).isEqualTo("replacement-fixture-key");
@@ -380,7 +391,9 @@ class AdminApiIntegrationTest {
     }
 
     private String storedKey(String id) {
-        return providers.findById(id).block(Duration.ofSeconds(5)).apiKey();
+        ProviderEntity provider = providers.findById(id).block(Duration.ofSeconds(5));
+        assertThat(provider.apiKey()).isNull();
+        return provider.apiKeyCiphertext() == null ? null : credentials.resolve(provider);
     }
 
     private String id(JsonNode entity) {

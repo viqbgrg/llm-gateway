@@ -29,7 +29,7 @@ gateway:
   api-key: ${GATEWAY_API_KEY:dev-gateway-key}
   redis-key-prefix: llm-gateway
   routing:
-    strategy: ADAPTIVE
+    strategy: PRIORITY
     hedge-delay: 800ms
     max-hedge-count: 1
   resilience:
@@ -38,3 +38,6 @@ gateway:
   discovery:
     enabled: true
     default-interval: 30m
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level %logger{36} %kvp - %msg%n"

@@ -13,9 +13,9 @@ public final class AdminDtos {
                                   @NotBlank @Size(max = 512) String baseUrl,
                                   @Size(max = 1024) String apiKey, Boolean enabled, Protocol protocol,
                                   @Min(1) @Max(Integer.MAX_VALUE) Long connectTimeoutMs,
-                                  @Min(1) Long readTimeoutMs, @Min(1) Long requestTimeoutMs, @Min(0) Integer maxRetries,
+                                  @Min(1) @Max(600000) Long readTimeoutMs, @Min(1) @Max(600000) Long requestTimeoutMs, @Min(0) @Max(20) Integer maxRetries,
                                   Boolean modelDiscoveryEnabled, @Size(max = 512) String modelDiscoveryUrl,
-                                  @Min(1) Long modelDiscoveryIntervalMs) {}
+                                  @Min(1) @Max(86400000) Long modelDiscoveryIntervalMs) {}
     public record ProviderResponse(String id, String name, String baseUrl, String apiKey, boolean enabled,
                                    Protocol protocol, long connectTimeoutMs, long readTimeoutMs, long requestTimeoutMs,
                                    int maxRetries, boolean modelDiscoveryEnabled, String modelDiscoveryUrl,

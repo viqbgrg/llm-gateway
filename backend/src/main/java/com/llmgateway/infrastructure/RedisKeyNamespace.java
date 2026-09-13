@@ -13,4 +13,8 @@ public class RedisKeyNamespace {
     public String preferredVirtualModel(String id) { return prefix + ":preferred:virtual-model:" + id; }
     public String bindingScore(String id) { return prefix + ":score:binding:" + id; }
     public String providerModels(String id) { return prefix + ":provider-models:" + id; }
+    public String discoveryLease(String id) { return prefix + ":discovery:lease:" + id; }
+    public String discoveryStatus(String id) { return prefix + ":discovery:status:" + id; }
+    public String dashboardMinute(long minute) { return prefix + ":dashboard:minute:" + minute; }
+    public String exploration(String id) { return prefix + ":exploration:virtual-model:" + id; }
 }

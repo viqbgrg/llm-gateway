@@ -11,4 +11,14 @@ import java.time.Instant;
 public record ProviderEntity(@Id String id, String name, String baseUrl, String apiKey, boolean enabled,
                              Protocol protocol, long connectTimeoutMs, long readTimeoutMs, long requestTimeoutMs,
                              int maxRetries, boolean modelDiscoveryEnabled, String modelDiscoveryUrl,
-                             long modelDiscoveryIntervalMs, Instant createdAt, Instant updatedAt, @Version Long version) {}
+                             long modelDiscoveryIntervalMs, Instant createdAt, Instant updatedAt, @Version Long version,
+                             String apiKeyCiphertext) {
+    public ProviderEntity(String id, String name, String baseUrl, String apiKey, boolean enabled, Protocol protocol,
+                          long connectTimeoutMs, long readTimeoutMs, long requestTimeoutMs, int maxRetries,
+                          boolean modelDiscoveryEnabled, String modelDiscoveryUrl, long modelDiscoveryIntervalMs,
+                          Instant createdAt, Instant updatedAt, Long version) {
+        this(id, name, baseUrl, apiKey, enabled, protocol, connectTimeoutMs, readTimeoutMs, requestTimeoutMs, maxRetries,
+                modelDiscoveryEnabled, modelDiscoveryUrl, modelDiscoveryIntervalMs, createdAt, updatedAt, version, null);
+    }
+    @Override public String toString() { return "ProviderEntity[id=" + id + ", credentials=redacted]"; }
+}

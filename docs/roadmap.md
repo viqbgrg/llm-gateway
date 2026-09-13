@@ -1,6 +1,8 @@
 # Implementation Roadmap
 
-This document is the source of truth for implementation status. A type or interface alone does not count as an implemented feature.
+This document is the source of truth for implementation status. A type or interface alone does not count as an implemented feature. The [detailed implementation plan](implementation-plan.md) records W0–W12 and their acceptance criteria.
+
+**Current acceptance: 2026-09-13.** All phases below are implemented for the [documented first-release protocol subset](protocol.md). Chat, Anthropic and stateless Responses clients use a Chat Completions upstream through explicit bindings. Native Anthropic/Responses upstream inference, stateful Responses, built-in tools, reasoning and media beyond user images remain outside this scope.
 
 ## Status Legend
 
@@ -11,22 +13,43 @@ This document is the source of truth for implementation status. A type or interf
 
 ## Phase Status
 
-| Phase | Status | Implemented | Remaining |
+| Phase | Status | Verified behavior | Evidence |
 | --- | --- | --- | --- |
-| 1. Project skeleton | Implemented | Gradle/Java 21, WebFlux, MySQL/Flyway and Redis; verified Docker environment; authenticated and validated CRUD APIs with MySQL integration tests; Provider/Provider Model/Virtual Model/Binding UI with editing and status controls; connection tests and manual model sync | None; acceptance verification recorded below |
-| 2. Internal IR | Contract only | Core request/response/message/content/tool/usage/capability types and adapter interfaces | Validate IR invariants, introduce protocol fixtures, complete typed content variants and compatibility tests |
-| 3. Chat Completions | Not started | None | Client adapter, provider adapter, real HTTP execution, error mapping and end-to-end request path |
-| 4. Anthropic / Responses | Not started | Protocol identifiers only | Separate request adapters, response encoders and Chat-provider translation for both client protocols |
-| 5. Configurable translation | Contract only | Binding protocol and translation fields | Translation validation, binding-specific execution and capability-loss rejection |
-| 6. Streaming | Contract only | Internal stream event enum/record | Provider SSE decoders, client SSE encoders, cancellation and fixture tests |
-| 7. Capability, wildcard, routing | Contract only | Capability types and `ModelRouter` interface | Wildcard matcher, compatibility checker, resolver, filters, scorers and routing tests |
-| 8. Health, metrics, circuit breaker | Contract only | Health and circuit interfaces; Actuator/Prometheus dependency | Redis-backed health state, metrics, configurable breaker state machine and tests |
-| 9. Adaptive provider selection | Not started | Redis key shapes reserved | Preferred binding, success/latency scoring, failure penalty and preference invalidation |
-| 10. Model discovery | Partial | Manual authenticated catalog fetch/import, pagination, transactional upserts, concurrent-sync serialization and failure safety delivered for Phase 1 | Automatic scheduler, model removal/reappearance reconciliation and lifecycle tests |
-| 11. Hedged requests | Not started | Routing policy schema fields only | Delayed secondary/tertiary requests, winner selection, cancellation, metrics and tests |
-| 12. Complete admin UI | Partial | Provider, Provider Model, Virtual Model and Binding list/create/edit/delete views; status controls; connection/sync actions; loading and error feedback | Rules, policies, health, scheduled discovery management and dashboard |
+| 1. Project skeleton | Implemented | Java 21/WebFlux, MySQL/Flyway, Redis, authenticated configuration CRUD, Vue UI, connection tests and manual catalog import | Admin API/browser tests; clean-volume Compose startup |
+| 2. Internal IR | Implemented | Immutable typed content, request/response/event validation, typed adapters and execution contexts, support matrix and synthetic fixtures | IR tests; protocol fixtures and HTTP compatibility tests |
+| 3. Chat Completions | Implemented | Client/provider adapters, real HTTP execution, logical-to-physical model mapping, authentication, safe errors and limits | Protocol and runtime integration tests |
+| 4. Anthropic / Responses | Implemented | Separate client parsers/encoders, gateway authentication and explicit translation to Chat upstream | Three-protocol JSON/SSE, image/tool-history and refusal fixtures |
+| 5. Configurable translation | Implemented | Binding-specific chains, configuration/runtime compatibility checks and rejection of capability loss before dispatch | Routing, admin and runtime integration tests |
+| 6. Streaming | Implemented | Incremental UTF-8/SSE, tool fragments, three client encoders, bounded buffers, commitment and cancellation | Streaming/coordinator tests; real HTTP and slow-consumer verification |
+| 7. Capability, wildcard, routing | Implemented | Exact/wildcard resolution, capabilities, configuration snapshots, circuit eligibility, ranking and read-only preview | Routing tests; real configuration changes and preview assertions |
+| 8. Health, metrics, circuit breaker | Implemented | Redis health, atomic circuits/probe permits, expiry, safe metrics/logs and runtime APIs | Shared-Redis concurrency, failure/recovery and sensitive-marker checks |
+| 9. Adaptive provider selection | Implemented | Separate latency samples, neutral priors, exploration, decayed penalties, CAS preferences, hold time, TTL and version invalidation | Adaptive scorer and runtime integration tests |
+| 10. Model discovery | Implemented | Manual merge and automatic scheduling, owner leases/renewal, persistent fencing, confirmed absence and safe reappearance | Catalog/scheduler tests; shared-state integration and browser recovery |
+| 11. Hedged requests | Implemented | Delayed second/third attempts, shared replay/budget rules, one winner, loser/timer cancellation and metrics | Virtual-time coordinator and real HTTP cancellation tests |
+| 12. Complete admin UI | Implemented | Rules, policies, strategy selection, preview, health, discovery and bounded dashboard; independent runtime polling | Four browser scenarios, production build and archived screenshots |
 
-## Phase 1 Acceptance Verification
+## Final W0–W12 Acceptance
+
+Verified from the working tree on 2026-09-13:
+
+- `./gradlew test build --rerun-tasks`: **432 tests in 20 suites**, zero failures, errors or skips. Fresh-schema HTTP tests and `V1UpgradeIntegrationTest` both passed against isolated MySQL/Redis.
+- `npm --prefix frontend run build`: type checking and production bundling passed. Vite still reports the existing large-chunk warning.
+- Production-profile Docker image built successfully. A fresh disposable MySQL/Redis stack became healthy and `/actuator/health` returned `UP`. MySQL's healthcheck now waits for TCP, preventing the initialization-only socket server from starting the gateway too early.
+- `npm --prefix frontend run test:e2e -- --reporter=list,json`: **4 passed** against that image, including configuration-to-inference behavior, circuit/discovery changes and runtime polling isolation.
+- `node scripts/verify-runtime.mjs`: **78 logical requests = 78 physical attempts = 78 fixture calls**; latency/cancellation bounds passed, with no active fixture requests left.
+- W0–W12's **92 checklist items** are complete. Additive migrations V2–V5, encryption rollout/rotation, protocol limits and operating instructions are documented.
+
+See [acceptance evidence](verification/acceptance.md) for the work-package/test mapping, environment, exact bounded-load results, screenshots and verification limits. See [Development](development.md) to reproduce the isolated setup. All provider traffic in acceptance uses synthetic local fixtures.
+
+## Cross-Cutting Verification
+
+Unified safe errors, separate retry/fallback behavior, replay/deadline/attempt budgets, logical/physical metrics, safe lifecycle logging, protocol/streaming/discovery/hedging suites and production credential encryption/migration/rotation are implemented and covered by the final acceptance. Shared-state concurrency tests use independent component instances connected to real Redis/MySQL; deployment-wide network partitions and production capacity are outside this acceptance.
+
+## Historical Acceptance Checkpoints
+
+The records below preserve earlier milestones and their test counts. Their then-incomplete phase statuses are superseded by the final acceptance above.
+
+### Phase 1 Acceptance Verification
 
 Verified on 2026-09-06:
 
@@ -37,13 +60,29 @@ Verified on 2026-09-06:
 
 Reproduction commands and browser screenshot locations are documented in [Development](development.md). Manual import behavior and the remaining discovery work are documented in [Model discovery](model-discovery.md).
 
-## Cross-Cutting Work Not Yet Implemented
+### W0.1 Acceptance Verification
 
-- Unified provider error classification and retry policy.
-- Retry/fallback separation and candidate exhaustion behavior.
-- Request/provider metrics named in the architecture requirements.
-- Structured request logging with request, binding and protocol context.
-- Protocol fixture, streaming, routing, scheduled-discovery and hedging test suites.
-- Production secret encryption or external secret-manager integration.
+Verified on 2026-09-06:
+
+- `ContentBlockTest` and `MediaSourceTest`: 65 tests passed for the eight typed content variants, source/MIME validation, invalid payload rejection and immutable tool arguments/results. The content contract and focused test command are documented in [Protocols and Internal IR](protocol.md).
+- `./gradlew test`: all 96 tests passed without skips, including the existing 11 API integration tests against isolated MySQL and Redis containers.
+
+### W0.2 Acceptance Verification
+
+Verified on 2026-09-06:
+
+- `LlmRequestValidationTest`, `GenerationConfigTest`, `JsonSchemaTest` and `LlmResponseValidationTest`: 109 tests passed for role constraints, tool selection, parallel result association, generation parameters, immutable schemas, finish reasons, unknown/partial usage, arithmetic overflow and input limits. The enforced contract is documented in [Protocols and Internal IR](protocol.md).
+- `./gradlew test`: all 205 tests passed without skips, including the original 65 content/media tests and 11 API integration tests against isolated MySQL and Redis containers.
+
+At this checkpoint Phase 2 was **Partial**. The remaining contracts, support matrix, fixtures and compatibility checks passed the final acceptance above.
+
+### W0.3 Acceptance Verification
+
+Verified on 2026-09-06:
+
+- `./gradlew :backend:test --tests com.llmgateway.model.LlmStreamEventContractTest`: 122 tests passed for immutable typed event payloads, message/content/tool identity, event order, interleaved calls, incomplete JSON fragments, complete argument validation, finish reasons, missing/partial usage, safe errors, premature EOF and argument buffer bounds. The event grammar and limits are documented in [Protocols and Internal IR](protocol.md).
+- `./gradlew test`: all 327 tests passed without skips, including the existing 11 API integration tests against isolated MySQL and Redis containers.
+
+At this checkpoint Phase 2 was **Partial** and Phase 6 was **Contract only**. Protocol adapters, SSE transport, cancellation and compatibility fixtures passed the final acceptance above.
 
 Update this file in the same pull request whenever a feature moves between statuses. Do not mark a phase **Implemented** until its documented acceptance tests pass.

@@ -1,0 +1,2 @@
+# SSE frames require a terminating blank line.
+backend/src/test/resources/fixtures/*.sse whitespace=-blank-at-eof

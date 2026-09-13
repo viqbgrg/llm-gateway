@@ -1,0 +1,7 @@
+# Use only with a dedicated verification project and synthetic providers.
+services:
+  llm-gateway:
+    environment:
+      GATEWAY_DISCOVERY_SCAN_INTERVAL: 100ms
+      GATEWAY_DISCOVERY_STARTUP_JITTER: 0ms
+      JAVA_TOOL_OPTIONS: -Xms128m -Xmx512m -Dreactor.netty.pool.maxConnections=64

@@ -15,6 +15,10 @@ import org.springframework.web.server.ServerWebInputException;
 
 @RestControllerAdvice(basePackages = "com.llmgateway.admin")
 public class AdminExceptionHandler {
+    @ExceptionHandler(com.llmgateway.inference.GatewayException.class)
+    public ResponseEntity<ErrorResponse> gateway(com.llmgateway.inference.GatewayException exception) {
+        return ResponseEntity.status(exception.error().status()).body(new ErrorResponse(exception.error().name(), exception.getMessage()));
+    }
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ErrorResponse badRequest(IllegalArgumentException exception) { return new ErrorResponse("INVALID_REQUEST", exception.getMessage()); }

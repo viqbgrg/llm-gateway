@@ -1,0 +1,31 @@
+{
+  "id": "synthetic-response",
+  "object": "chat.completion",
+  "created": 0,
+  "model": "public-model",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_next",
+            "type": "function",
+            "function": {
+              "name": "lookup",
+              "arguments": "{\"value\":2}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 4,
+    "completion_tokens": 2,
+    "total_tokens": 6
+  }
+}

@@ -5,4 +5,5 @@ import reactor.core.publisher.Flux;
 
 public interface BindingRepository extends ReactiveCrudRepository<BindingEntity, String> {
     Flux<BindingEntity> findByVirtualModelId(String virtualModelId);
+    Flux<BindingEntity> findByProviderId(String providerId);
 }

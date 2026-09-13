@@ -1,27 +1,92 @@
 # Providers
 
-Providers hold channel configuration and credentials. Provider models are separate records, so a model can be disabled or marked removed without deleting the provider. API keys are write-only through the admin API and are masked in responses.
+Providers hold channel configuration; provider models are separate records. Virtual models and bindings do not become aliases for providers. Admin APIs require the gateway bearer token. API keys are write-only and appear only as `***` or an unconfigured value in responses.
 
-## Administration
+## Administration and transport
 
-The UI manages providers, provider models, virtual models and bindings with create, edit, enable/disable and delete actions. Provider models can be filtered by provider. Binding forms select a model from the chosen provider; the API also rejects a model belonging to another provider. The provider of an existing provider model cannot be changed.
+- Provider, virtual model and binding availability uses `enabled`. Provider models use `NEW`, `ACTIVE`, `DISABLED` and `REMOVED`; only `ACTIVE` is inference-eligible.
+- Binding forms select a provider-owned model. The API rejects wrong ownership, unknown capabilities, unavailable protocol chains and source/target mismatches. Changing a provider protocol cannot invalidate its existing bindings silently.
+- Required fields are validated; missing records return 404, referenced deletes and optimistic-lock conflicts return 409. Remove references first rather than silently cascading configuration deletion.
+- Omitted/null/`***` keys preserve an existing credential. A new nonempty value replaces it; an empty value clears it. The UI leaves the secret field empty on edit and has an explicit removal checkbox.
+- Inference supports only `CHAT_COMPLETIONS` providers. Anthropic and Responses **catalogs** are supported, but native upstream inference for those protocols is not.
+- Chat inference uses `/v1/chat/completions` under the configured base URL, or `/chat/completions` if the base already ends in `/v1`. Redirects are not followed. Provider connect/read/request timeouts remain bounded by the logical request deadline.
 
-Provider, virtual-model and binding status is controlled by `enabled`. Provider models use `NEW`, `ACTIVE`, `DISABLED` and `REMOVED`; the UI's Enable action sets `ACTIVE`, and Disable sets `DISABLED`.
+Provider endpoints and catalog URLs are administrator-controlled outbound destinations. Restrict admin access and provider egress in production. The service does not fetch user image URLs itself, validate their actual media bytes, or infer a model's capabilities from its name.
 
-Provider keys are returned as `***`. An omitted, null or masked key on update preserves the stored key. A new nonempty key replaces it, and an empty string removes it. The edit form leaves the key input empty and provides an explicit removal checkbox.
+## Connection test and discovery
 
-All admin endpoints require the gateway bearer token. Required fields are validated, missing records return HTTP 404, and updates never create missing records. Duplicate names and deleting referenced records return HTTP 409; remove bindings before deleting their models or providers.
-
-## Connection test
-
-`POST /api/admin/providers/{id}/test-connection` reads the configured provider's model catalog using its authentication and timeout settings. It returns:
+`POST /api/admin/providers/{id}/test-connection` reads the catalog using the provider's credential and timeouts without performing inference or importing models:
 
 ```json
-{"success": true, "modelCount": 2, "latencyMs": 35}
+{"success":true,"modelCount":2,"latencyMs":35}
 ```
 
-This verifies access to the catalog without creating models or making an inference request. It can also be run for a disabled provider.
+It is explicitly allowed even for a disabled provider. The default catalog URL is `/v1/models`, or `/models` under a base ending in `/v1`; `modelDiscoveryUrl` overrides it. Chat/Responses catalogs use bearer authentication; Anthropic catalogs use `x-api-key` and `anthropic-version: 2023-06-01`.
 
-The default catalog path is `/v1/models` under the base URL, or `/models` when the base URL already ends in `/v1`. Set `modelDiscoveryUrl` (Model catalog URL in the UI) to override it. Chat Completions and Responses providers use bearer authentication; Anthropic providers use `x-api-key` and `anthropic-version`.
+`POST /api/admin/providers/{id}/sync-models` performs a manual merge. Automatic complete-snapshot reconciliation is separate; see [Model discovery](model-discovery.md). Both catalog paths and inference share `CredentialService`; credentials are not kept as printable values in inference configuration snapshots. Upstream catalog failures use safe 502 errors, timeouts 504, with no response-body or key leakage.
 
-Upstream failures return HTTP 502, and timeouts return HTTP 504. Error messages contain a safe explanation or upstream HTTP status, never upstream response bodies or credentials.
+## Production credentials
+
+Development defaults are **encrypted writes disabled, legacy plaintext reads enabled**. These defaults are for local compatibility, not production storage. The `prod` and `production` profiles refuse startup without encrypted writes and an explicit, nonempty gateway token different from `dev-gateway-key`.
+
+`CredentialEncryption` uses JCA AES-256-GCM with a random 12-byte nonce and a 128-bit authentication tag. Associated data binds version, key ID and provider ID. The envelope is:
+
+```text
+v1.key-id.base64(nonce).base64(ciphertext+tag)
+```
+
+A deployment keyring is a JSON object mapping key IDs (`[A-Za-z0-9_-]{1,64}`) to base64-encoded **32-byte** keys. Store it outside the repository with restrictive permissions and a read-only mount. Keys are read at startup; modifying the file alone does not rotate a running process. Keep database and keyring backups separately protected; a database dump alone must not reveal credentials.
+
+| Spring setting | Environment name | Purpose |
+| --- | --- | --- |
+| `gateway.credentials.encrypted-writes` | `GATEWAY_CREDENTIALS_ENCRYPTED_WRITES` | Encrypt replacements and migrated keys |
+| `gateway.credentials.allow-legacy-reads` | `GATEWAY_CREDENTIALS_ALLOW_LEGACY_READS` | Transitional plaintext reads |
+| `gateway.credentials.active-key-id` | `GATEWAY_CREDENTIALS_ACTIVE_KEY_ID` | Key used for new envelopes |
+| `gateway.credentials.keyring-file` | `GATEWAY_CREDENTIALS_KEYRING_FILE` | Keyring path visible inside the process |
+
+The production compose overlay supplies those settings and activates the production profile. Its external inputs are `GATEWAY_API_KEY`, `GATEWAY_ACTIVE_KEY_ID` and absolute host path `GATEWAY_KEYRING_FILE`; optional `GATEWAY_ALLOW_LEGACY_READS` defaults to `false`.
+
+```bash
+# Export the above inputs securely, plus non-default MySQL credentials.
+docker compose -f deployment/docker-compose.yml \
+  -f deployment/docker-compose.production.yml config --quiet
+docker compose -f deployment/docker-compose.yml \
+  -f deployment/docker-compose.production.yml up --build -d --wait
+```
+
+The keyring is mounted read-only at `/run/secrets/provider-keyring.json`. Do not print resolved compose configuration into public logs, commit `.env` files or log credential service objects. This release implements local encrypted storage, not an external Secret Manager integration.
+
+## Schema upgrade and plaintext migration
+
+V1 is unchanged. New databases apply all migrations; existing V1 databases expand through:
+
+| Version | Change |
+| --- | --- |
+| V2 | Rule targets, typed policy columns, references and versions; untargeted legacy rules are disabled |
+| V3 | Separate sufficiently sized credential ciphertext column; no key material in SQL |
+| V4 | Model missing/reappearance metadata and persistent discovery generations |
+| V5 | Separate observation/routing versions; case-sensitive model names and wildcard patterns |
+
+Upgrade procedure:
+
+1. Back up configuration and deployment key material separately. Apply additive schema migrations and deploy a version able to read both storage formats to **all** instances.
+2. Inject the keyring, enable encrypted writes and temporarily allow legacy reads. Do not mix ciphertext-writing instances with old binaries that cannot read it.
+3. Repeatedly call the authenticated migration API until `remainingLegacy` is zero. Each batch is bounded and uses optimistic version checks; rerun conflicts rather than overwriting a concurrent admin update.
+4. Verify inference, connection tests and discovery, then disable legacy reads on all instances. Schema expansion alone does not encrypt historical records.
+
+```bash
+curl --fail http://localhost:8080/api/admin/credentials/migrate \
+  -H "Authorization: Bearer $GATEWAY_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"batchSize":100,"rotate":false}'
+```
+
+Batches accept 1–1000 records. Results include `migrated`, `conflicts`, `failed`, `remainingLegacy`, `remainingRotation`, and `failures:[{providerId,code}]`. Safe failure codes are `VERSION_CONFLICT`, `CREDENTIAL_CONFIGURATION` and `PERSISTENCE_ERROR`; plaintext, ciphertext and parser diagnostics are never returned.
+
+## Key rotation and recovery
+
+1. Deploy/restart every instance with both old and new keys in its keyring, using the new active key ID for writes.
+2. Run the migration endpoint with `rotate:true` until both remaining counts are zero; check conflict/failure counts and repeat safely.
+3. Verify all three credential usage paths before retiring the old key from deployment. Preserve keys needed to restore retained backups.
+
+Tampered envelopes, missing IDs, wrong keys and cross-provider ciphertext substitution stop the corresponding outbound call with a safe credential/configuration error. Never recover by decrypting and writing secrets back to the legacy column. A rollback target must remain ciphertext-compatible; additive migrations are not an automatic database rollback plan.

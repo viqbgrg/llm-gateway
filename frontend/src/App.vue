@@ -3,11 +3,15 @@ import { computed, onMounted, ref } from 'vue'
 import { Connection, Cpu, Key, Link, Plus, Refresh, Delete, Edit, Collection } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AdminEditor from './components/AdminEditor.vue'
+import ModelRules from './components/ModelRules.vue'
+import RoutingPolicies from './components/RoutingPolicies.vue'
+import RoutingPreview from './components/RoutingPreview.vue'
+import RuntimeView from './components/RuntimeView.vue'
 import { useAdminStore } from './stores/admin'
 import type { Binding, EditorState, Provider, ProviderModel, Resource, VirtualModel } from './types/admin'
 
 const store = useAdminStore()
-const active = ref<'overview' | Resource>('overview')
+const active = ref<'overview' | Resource | 'model-rules' | 'routing-policies' | 'routing-preview' | 'health' | 'discovery'>('overview')
 const keyDialog = ref(!store.apiKey)
 const keyInput = ref(store.apiKey)
 const editor = ref<EditorState | null>(null)
@@ -16,7 +20,8 @@ const providerFilter = ref('')
 const busy = computed(() => !!pending.value || store.loading)
 const titles = {
   overview: 'System overview', providers: 'Providers', 'provider-models': 'Provider models',
-  'virtual-models': 'Virtual models', bindings: 'Bindings'
+  'virtual-models': 'Virtual models', bindings: 'Bindings', 'model-rules': 'Model rules', 'routing-policies': 'Routing policies',
+  'routing-preview': 'Routing preview', health: 'Health', discovery: 'Model discovery'
 }
 const singular = { providers: 'provider', 'provider-models': 'provider model', 'virtual-models': 'virtual model', bindings: 'binding' }
 const editorTitle = computed(() => editor.value ? (editor.value.record ? 'Edit ' : 'Add ') + singular[editor.value.resource] : '')
@@ -29,7 +34,7 @@ function selectPage(key: string) {
   if (key in titles) active.value = key as typeof active.value
 }
 function add() {
-  if (active.value !== 'overview') editor.value = { resource: active.value }
+  if (active.value in singular) editor.value = { resource: active.value as Resource }
 }
 async function act(key: string, action: () => Promise<string | void>) {
   if (busy.value) return
@@ -114,6 +119,11 @@ onMounted(() => { if (store.apiKey) void refresh() })
         <el-menu-item index="provider-models"><el-icon><Collection /></el-icon>Provider models</el-menu-item>
         <el-menu-item index="virtual-models"><el-icon><Cpu /></el-icon>Virtual models</el-menu-item>
         <el-menu-item index="bindings"><el-icon><Link /></el-icon>Bindings</el-menu-item>
+        <el-menu-item index="model-rules">Model rules</el-menu-item>
+        <el-menu-item index="routing-policies">Routing policies</el-menu-item>
+        <el-menu-item index="routing-preview">Routing preview</el-menu-item>
+        <el-menu-item index="health">Health</el-menu-item>
+        <el-menu-item index="discovery">Model discovery</el-menu-item>
       </el-menu>
     </el-aside>
     <el-main>
@@ -122,16 +132,20 @@ onMounted(() => { if (store.apiKey) void refresh() })
         <div class="actions">
           <el-button :icon="Key" circle title="Admin API key" aria-label="Admin API key" :disabled="busy" @click="keyDialog = true" />
           <el-button :icon="Refresh" :loading="store.loading" :disabled="busy" circle title="Refresh" aria-label="Refresh" @click="refresh" />
-          <el-button v-if="active !== 'overview'" type="primary" :icon="Plus" :disabled="busy" @click="add">Add</el-button>
+          <el-button v-if="active in singular" type="primary" :icon="Plus" :disabled="busy" @click="add">Add</el-button>
         </div>
       </div>
       <el-alert v-if="store.error" :title="store.error" type="error" show-icon :closable="false" class="load-error" />
-      <el-row v-if="active === 'overview'" :gutter="16" v-loading="store.loading">
+      <template v-if="active === 'overview'"><el-row :gutter="16" v-loading="store.loading">
         <el-col :xs="12" :lg="6"><el-card><div class="metric">{{ store.providers.length }}</div><div>Providers</div></el-card></el-col>
         <el-col :xs="12" :lg="6"><el-card><div class="metric">{{ store.providerModels.length }}</div><div>Provider models</div></el-card></el-col>
         <el-col :xs="12" :lg="6"><el-card><div class="metric">{{ store.virtualModels.length }}</div><div>Virtual models</div></el-card></el-col>
         <el-col :xs="12" :lg="6"><el-card><div class="metric">{{ store.bindings.length }}</div><div>Bindings</div></el-card></el-col>
-      </el-row>
+      </el-row><RuntimeView v-if="store.apiKey && !keyDialog" page="dashboard" /></template>
+      <ModelRules v-else-if="active === 'model-rules'" />
+      <RoutingPolicies v-else-if="active === 'routing-policies'" />
+      <RoutingPreview v-else-if="active === 'routing-preview'" />
+      <RuntimeView v-else-if="active === 'health' || active === 'discovery'" :key="active" :page="active" />
       <el-table v-else-if="active === 'providers'" :data="store.providers" v-loading="store.loading" row-key="id" empty-text="No providers yet. Add a provider to get started.">
         <el-table-column prop="name" label="Name" min-width="150" />
         <el-table-column prop="baseUrl" label="Base URL" min-width="200" show-overflow-tooltip />
@@ -160,6 +174,7 @@ onMounted(() => { if (store.apiKey) void refresh() })
             <template #default="{ row }"><el-tag :type="row.status === 'ACTIVE' ? 'success' : row.status === 'NEW' ? 'warning' : 'info'">{{ row.status }}</el-tag></template>
           </el-table-column>
           <el-table-column label="Last seen" min-width="170"><template #default="{ row }">{{ new Date(row.lastSeenAt).toLocaleString() }}</template></el-table-column>
+          <el-table-column label="Discovery" min-width="160"><template #default="{ row }">{{ row.removalSource === 'DISCOVERY' ? 'Removed by discovery' : row.missingCount ? row.missingCount + ' missing observations' : 'Present / not yet checked' }}</template></el-table-column>
           <el-table-column label="Actions" width="230" fixed="right">
             <template #default="{ row }">
               <el-button text :disabled="busy" :loading="pending === 'toggle:' + row.id" @click="toggleModel(row)">{{ row.status === 'ACTIVE' ? 'Disable' : 'Enable' }}</el-button>

@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useAdminStore } from '../stores/admin'
+import { useRoutingStore } from '../stores/routing'
 import { capabilities, modelStatuses, protocols } from '../types/admin'
 import type { BindingPayload, EditorState, ProviderModelPayload, ProviderPayload, VirtualModelPayload } from '../types/admin'
 
 const props = defineProps<{ editor: EditorState }>()
 const emit = defineEmits<{ close: []; saved: [] }>()
 const store = useAdminStore()
+const routing = useRoutingStore()
+onMounted(() => { if (props.editor.resource === 'virtual-models') void routing.refresh() })
 const form = ref<FormInstance>()
 const saving = ref(false)
 const failure = ref('')
@@ -45,6 +48,16 @@ const modelCapabilities = ref(capabilityValues(providerModel.capabilities))
 const overrideCapabilities = ref(binding.capabilitiesOverride != null)
 const bindingCapabilities = ref(capabilityValues(binding.capabilitiesOverride))
 const bindingModels = computed(() => store.providerModels.filter(model => model.providerId === binding.providerId))
+const effectiveCapabilities = computed(() => {
+  const declared = overrideCapabilities.value ? bindingCapabilities.value
+    : capabilityValues(bindingModels.value.find(model => model.id === binding.providerModelId)?.capabilities)
+  const supported = ['CHAT', 'STREAMING', 'VISION', 'TOOLS', ...(binding.sourceProtocol === 'ANTHROPIC' ? [] : ['STRUCTURED_OUTPUT'])]
+  return binding.targetProtocol === 'CHAT_COMPLETIONS' ? declared.filter(value => supported.includes(value)) : []
+})
+const bindingError = computed(() => binding.targetProtocol !== 'CHAT_COMPLETIONS'
+  ? 'Only Chat Completions providers support inference.'
+  : binding.sourceProtocol !== binding.targetProtocol && !binding.translationEnabled
+    ? 'Enable translation to route this client protocol to the provider.' : '')
 watch(() => binding.providerId, id => {
   if (!bindingModels.value.some(model => model.id === binding.providerModelId)) binding.providerModelId = ''
   const selected = store.providers.find(item => item.id === id)
@@ -61,6 +74,7 @@ const rules: FormRules = Object.fromEntries(
 
 async function save() {
   if (saving.value || !await form.value?.validate().catch(() => false)) return
+  if (props.editor.resource === 'bindings' && bindingError.value) { failure.value = bindingError.value; return }
   saving.value = true
   failure.value = ''
   try {
@@ -111,6 +125,12 @@ async function save() {
           <el-form-item label="Connect timeout (ms)"><el-input-number v-model="provider.connectTimeoutMs" :min="1" :max="2147483647" /></el-form-item>
           <el-form-item label="Read timeout (ms)"><el-input-number v-model="provider.readTimeoutMs" :min="1" /></el-form-item>
           <el-form-item label="Request timeout (ms)"><el-input-number v-model="provider.requestTimeoutMs" :min="1" /></el-form-item>
+          <el-form-item label="Retries per binding"><el-input-number v-model="provider.maxRetries" :min="0" :max="20" /></el-form-item>
+        </el-collapse-item>
+        <el-collapse-item title="Automatic model discovery" name="discovery">
+          <el-form-item label="Enable automatic discovery"><el-switch v-model="provider.modelDiscoveryEnabled" /></el-form-item>
+          <el-form-item label="Discovery interval (ms)"><el-input-number v-model="provider.modelDiscoveryIntervalMs" :min="1" :max="86400000" /></el-form-item>
+          <p>Models absent from two successful complete catalogs are marked removed. Reappearing models keep their configuration and bindings.</p>
         </el-collapse-item>
       </el-collapse>
     </template>
@@ -134,6 +154,8 @@ async function save() {
       <el-form-item label="Display name"><el-input v-model="virtualModel.displayName" maxlength="255" /></el-form-item>
       <el-form-item label="Description"><el-input v-model="virtualModel.description" type="textarea" /></el-form-item>
       <el-form-item label="Enabled"><el-switch v-model="virtualModel.enabled" /></el-form-item>
+      <el-form-item label="Routing policy"><el-select v-model="virtualModel.routingPolicyId" clearable placeholder="Default PRIORITY"><el-option v-for="policy in routing.policies" :key="policy.id" :value="policy.id" :label="policy.name + ' (' + policy.strategy + ')'" /></el-select></el-form-item>
+      <el-alert v-if="routing.error" :title="routing.error" type="error" :closable="false" />
     </template>
     <template v-else>
       <el-form-item label="Virtual model" prop="virtualModelId">
@@ -143,7 +165,7 @@ async function save() {
       </el-form-item>
       <el-form-item label="Provider" prop="providerId">
         <el-select v-model="binding.providerId" filterable>
-          <el-option v-for="item in store.providers" :key="item.id" :label="item.name" :value="item.id" />
+          <el-option v-for="item in store.providers" :key="item.id" :label="item.name" :value="item.id" :disabled="item.protocol !== 'CHAT_COMPLETIONS'" />
         </el-select>
       </el-form-item>
       <el-form-item label="Provider model" prop="providerModelId">
@@ -155,13 +177,16 @@ async function save() {
       <el-form-item label="Enabled"><el-switch v-model="binding.enabled" /></el-form-item>
       <el-form-item label="Translation enabled"><el-switch v-model="binding.translationEnabled" /></el-form-item>
       <el-form-item label="Source protocol"><el-select v-model="binding.sourceProtocol"><el-option v-for="value in protocols" :key="value" :value="value" /></el-select></el-form-item>
-      <el-form-item label="Target protocol"><el-select v-model="binding.targetProtocol"><el-option v-for="value in protocols" :key="value" :value="value" /></el-select></el-form-item>
+      <el-form-item label="Target protocol"><el-select v-model="binding.targetProtocol" disabled><el-option value="CHAT_COMPLETIONS" /></el-select></el-form-item>
+      <el-alert v-if="bindingError" :title="bindingError" type="warning" :closable="false" />
       <el-form-item label="Override capabilities"><el-switch v-model="overrideCapabilities" /></el-form-item>
       <el-form-item v-if="overrideCapabilities" label="Capabilities">
         <el-select v-model="bindingCapabilities" multiple>
           <el-option v-for="value in capabilities" :key="value" :value="value" />
         </el-select>
       </el-form-item>
+      <p>Protocol chain: {{ binding.sourceProtocol }} → {{ binding.targetProtocol }}</p>
+      <p>Available capabilities: {{ effectiveCapabilities.join(', ') || 'None configured' }}</p>
     </template>
     <div class="dialog-actions">
       <el-button :disabled="saving" @click="emit('close')">Cancel</el-button>

@@ -9,7 +9,8 @@ services:
     ports: ["${MYSQL_PORT:-3306}:3306"]
     volumes: ["mysql-data:/var/lib/mysql"]
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      # Initialization uses a socket-only temporary server; wait for the final TCP listener.
+      test: ["CMD", "mysqladmin", "ping", "--host=127.0.0.1", "--protocol=TCP"]
       interval: 5s
       timeout: 5s
       retries: 20

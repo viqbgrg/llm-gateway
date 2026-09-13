@@ -1,0 +1,22 @@
+{
+  "id": "synthetic-response",
+  "type": "message",
+  "role": "assistant",
+  "model": "public-model",
+  "content": [
+    {
+      "type": "tool_use",
+      "id": "call_next",
+      "name": "lookup",
+      "input": {
+        "value": 2
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {
+    "input_tokens": 4,
+    "output_tokens": 2
+  }
+}

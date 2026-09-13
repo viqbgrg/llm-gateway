@@ -1,0 +1,171 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "protocol": "CHAT_COMPLETIONS",
+      "version": "chat-completions-2024-10",
+      "request": "chat-request.json",
+      "ir": "text-ir.json",
+      "upstreamResponse": "chat-response.json",
+      "clientResponse": "chat-client-response.json",
+      "features": [
+        "text",
+        "logical-model-name"
+      ]
+    },
+    {
+      "protocol": "ANTHROPIC",
+      "version": "2023-06-01",
+      "request": "anthropic-request.json",
+      "ir": "text-ir.json",
+      "upstreamResponse": "chat-response.json",
+      "clientResponse": "anthropic-client-response.json",
+      "features": [
+        "text",
+        "explicit-translation"
+      ]
+    },
+    {
+      "protocol": "RESPONSES",
+      "version": "responses-2025-03",
+      "request": "responses-request.json",
+      "ir": "text-ir.json",
+      "upstreamResponse": "chat-response.json",
+      "clientResponse": "responses-client-response.json",
+      "features": [
+        "text",
+        "stateless"
+      ]
+    }
+  ],
+  "stream": {
+    "protocol": "CHAT_COMPLETIONS",
+    "version": "chat-completions-2024-10",
+    "raw": "chat-stream.sse",
+    "events": "stream-events.json",
+    "features": [
+      "utf8",
+      "usage",
+      "terminal-marker"
+    ]
+  },
+  "rejections": [
+    {
+      "protocol": "CHAT_COMPLETIONS",
+      "request": {
+        "model": "public-model",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hi"
+          }
+        ],
+        "n": 2
+      },
+      "code": "INVALID_REQUEST",
+      "reason": "Multiple output candidates are not represented in the IR"
+    },
+    {
+      "protocol": "RESPONSES",
+      "request": {
+        "model": "public-model",
+        "input": "Hi",
+        "previous_response_id": "synthetic-prior"
+      },
+      "code": "INVALID_REQUEST",
+      "reason": "Server-side conversation state is not supported"
+    },
+    {
+      "protocol": "ANTHROPIC",
+      "request": {
+        "model": "public-model",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hi"
+          }
+        ],
+        "max_tokens": 20,
+        "thinking": {
+          "type": "enabled",
+          "budget_tokens": 10
+        }
+      },
+      "code": "INVALID_REQUEST",
+      "reason": "Thinking controls have no equivalent in the implemented Chat provider chain"
+    },
+    {
+      "protocol": "ANTHROPIC",
+      "request": {
+        "model": "public-model",
+        "max_tokens": 20,
+        "messages": [
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "image",
+                "source": {
+                  "type": "url",
+                  "url": "https://example.invalid/image.png"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "code": "INVALID_REQUEST",
+      "reason": "The implemented Chat upstream only supports images in user messages"
+    }
+  ],
+  "conversationCases": [
+    {
+      "protocol": "CHAT_COMPLETIONS",
+      "version": "chat-completions-2024-10",
+      "request": "chat-conversation-request.json",
+      "upstreamRequest": "conversation-upstream-request.json",
+      "upstreamResponse": "tool-upstream-response.json",
+      "clientResponse": "chat-tool-response.json",
+      "features": [
+        "user-image",
+        "tool-definition",
+        "named-tool-choice",
+        "tool-call",
+        "tool-result",
+        "usage"
+      ]
+    },
+    {
+      "protocol": "ANTHROPIC",
+      "version": "2023-06-01",
+      "request": "anthropic-conversation-request.json",
+      "upstreamRequest": "conversation-upstream-request.json",
+      "upstreamResponse": "tool-upstream-response.json",
+      "clientResponse": "anthropic-tool-response.json",
+      "features": [
+        "user-image",
+        "tool-definition",
+        "named-tool-choice",
+        "tool-call",
+        "tool-result",
+        "usage"
+      ]
+    },
+    {
+      "protocol": "RESPONSES",
+      "version": "responses-2025-03",
+      "request": "responses-conversation-request.json",
+      "upstreamRequest": "conversation-upstream-request.json",
+      "upstreamResponse": "tool-upstream-response.json",
+      "clientResponse": "responses-tool-response.json",
+      "features": [
+        "user-image",
+        "tool-definition",
+        "named-tool-choice",
+        "tool-call",
+        "tool-result",
+        "usage"
+      ]
+    }
+  ]
+}
