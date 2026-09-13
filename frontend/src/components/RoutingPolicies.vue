@@ -59,6 +59,7 @@ async function remove(row: RoutingPolicy) {
     <el-table-column prop="name" label="Name" /><el-table-column prop="strategy" label="Strategy" />
     <el-table-column prop="deadlineMs" label="Deadline (ms)" /><el-table-column prop="maxTotalAttempts" label="Attempt budget" />
     <el-table-column label="Hedging"><template #default="{ row }">{{ row.hedgingEnabled ? row.maxHedgeCount + ' additional requests' : 'Off' }}</template></el-table-column>
+    <!-- @vue-generic {RoutingPolicy} -->
     <el-table-column label="Actions" width="210"><template #default="{ row }"><el-button text @click="edit(row)">Edit policy</el-button><el-button text type="danger" @click="remove(row)">Delete policy</el-button></template></el-table-column>
   </el-table>
   <el-dialog v-model="visible" :title="id ? 'Edit policy' : 'Add policy'" width="640px" :close-on-click-modal="false">

@@ -55,6 +55,7 @@ public final class ClientSseEncoder {
                         ObjectNode message = object().put("id", start.messageId()).put("type", "message").put("role", "assistant")
                                 .put("model", model).putNull("stop_reason").putNull("stop_sequence");
                         message.set("content", MAPPER.createArrayNode());
+                        message.set("usage", anthropicUsage(null));
                         return List.of(named("message_start", object().set("message", message)));
                     }
                     case LlmStreamEvent.ContentBlockStart start -> {
@@ -73,12 +74,7 @@ public final class ClientSseEncoder {
                     case LlmStreamEvent.UsageUpdate update -> { usage[0] = update.usage(); return List.of(); }
                     case LlmStreamEvent.MessageEnd end -> {
                         ObjectNode message = object().set("delta", object().put("stop_reason", AnthropicAdapter.stopReason(end.finishReason())).putNull("stop_sequence"));
-                        if (usage[0] != null) {
-                            ObjectNode counts = object();
-                            if (usage[0].inputTokens() != null) counts.put("input_tokens", usage[0].inputTokens());
-                            if (usage[0].outputTokens() != null) counts.put("output_tokens", usage[0].outputTokens());
-                            message.set("usage", counts);
-                        }
+                        message.set("usage", anthropicUsage(usage[0]));
                         return List.of(named("message_delta", message), named("message_stop", object()));
                     }
                     case LlmStreamEvent.Error error -> { return List.of(named("error", object().set("error", object().put("type", error.error().code()).put("message", error.error().message())))); }
@@ -100,6 +96,12 @@ public final class ClientSseEncoder {
                 || event instanceof LlmStreamEvent.MessageEnd;
     }
     public static boolean content(LlmStreamEvent event) { return meaningful(event) && !(event instanceof LlmStreamEvent.MessageEnd); }
+    private static ObjectNode anthropicUsage(Usage usage) {
+        // SDK stream accumulators need a usage object even before Chat reports it.
+        // Null preserves unknown counters; zero would invent billing information.
+        return object().put("input_tokens", usage == null ? null : usage.inputTokens())
+                .put("output_tokens", usage == null ? null : usage.outputTokens());
+    }
     private static ServerSentEvent<String> data(JsonNode value) { return ServerSentEvent.<String>builder(value.toString()).build(); }
     private static ServerSentEvent<String> named(String event, ObjectNode value) { value.put("type", event); return ServerSentEvent.<String>builder(value.toString()).event(event).build(); }
 

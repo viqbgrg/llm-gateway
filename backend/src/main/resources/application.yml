@@ -27,6 +27,7 @@ server:
   port: ${SERVER_PORT:8080}
 gateway:
   api-key: ${GATEWAY_API_KEY:dev-gateway-key}
+  admin-api-key: ${GATEWAY_ADMIN_API_KEY:}
   redis-key-prefix: llm-gateway
   routing:
     strategy: PRIORITY

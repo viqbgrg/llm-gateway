@@ -2,7 +2,8 @@ import { test, expect, type APIRequestContext, type Page, type TestInfo } from '
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
-const apiKey = process.env.GATEWAY_API_KEY ?? 'dev-gateway-key'
+const gatewayKey = process.env.GATEWAY_API_KEY ?? 'dev-gateway-key'
+const apiKey = process.env.GATEWAY_ADMIN_API_KEY ?? gatewayKey
 const headers = { Authorization: 'Bearer ' + apiKey }
 const prefix = 'runtime-e2e-' + Date.now().toString(36)
 const providerKey = 'synthetic-runtime-provider-key'
@@ -36,7 +37,7 @@ async function capture(page: Page, testInfo: TestInfo, name: string) {
   await page.screenshot({ path: testInfo.outputPath(name), fullPage: true, animations: 'disabled' })
 }
 async function infer(request: APIRequestContext, model: string, status = 200) {
-  const response = await request.post('/v1/chat/completions', { headers, data: { model, messages: [{ role: 'user', content: 'Synthetic browser verification' }] } })
+  const response = await request.post('/v1/chat/completions', { headers: { Authorization: 'Bearer ' + gatewayKey }, data: { model, messages: [{ role: 'user', content: 'Synthetic browser verification' }] } })
   expect(response.status()).toBe(status)
   const body = await response.json()
   expect(JSON.stringify(body)).not.toContain(providerKey)

@@ -10,20 +10,21 @@ A Spring WebFlux + Vue 3 gateway with provider-neutral LLM IR, explicit model bi
 - One deadline and attempt budget for retry, fallback and optional hedging; cancellation propagation; Redis circuits and atomic half-open permits.
 - Manual catalog import, coordinated automatic discovery, confirmed removal and safe reappearance.
 - Encrypted provider credentials, resumable migration and key rotation; safe lifecycle logs, Prometheus metrics and a 15-minute dashboard.
+- Separate inference/admin access keys; the production overlay authenticates Redis and keeps storage ports private.
 - Administration of providers, provider models, virtual models, bindings, rules and policies, plus health and discovery views.
 
 This is a **tested protocol subset**, not a complete drop-in implementation of all provider APIs. Stateful Responses, native Anthropic/Responses upstream inference, built-in tools, reasoning, audio, video and documents are not supported. Unsupported semantics are rejected rather than silently discarded. See the [support matrix](docs/protocol.md).
 
 ## Quick start
 
-Requirements: Docker; Java 21 and Node 20+ for development.
+Requirements: Docker; Java 21 and Node 22+ for development.
 
 ```bash
 # Development defaults only; do not expose this stack publicly.
 docker compose up --build -d --wait
 ```
 
-The UI and API are served at `http://localhost:8080`. The development gateway token is `dev-gateway-key`; set `GATEWAY_API_KEY`, `MYSQL_PASSWORD` and `MYSQL_ROOT_PASSWORD` explicitly outside development. Use the [production overlay and keyring procedure](docs/provider.md#production-credentials) for encrypted storage. The base compose file publishes MySQL and Redis ports for local development; production deployments must restrict network access and terminate TLS appropriately.
+The UI and API are served at `http://localhost:8080`. The development token is `dev-gateway-key`; when `GATEWAY_ADMIN_API_KEY` is unset, local administration uses the same token. The [production overlay and keyring procedure](docs/provider.md#production-credentials) requires separate inference/admin keys, explicit MySQL/Redis passwords and encrypted provider storage. The base compose publishes storage ports for local development; the production overlay removes those ports. Terminate TLS at your production ingress.
 
 In the UI:
 
@@ -40,7 +41,7 @@ curl http://localhost:8080/v1/chat/completions \
   -d '{"model":"your-virtual-model","messages":[{"role":"user","content":"Hello"}],"stream":false}'
 ```
 
-The gateway token authenticates clients and admin requests. It is **not** forwarded as the provider credential.
+`GATEWAY_API_KEY` authenticates inference clients. Use `GATEWAY_ADMIN_API_KEY` for the UI, `/api/admin/**` and Prometheus; production rejects shared keys. Neither key is forwarded as the provider credential.
 
 ## Build and verify
 
@@ -50,7 +51,7 @@ npm --prefix frontend ci
 npm --prefix frontend run build
 ```
 
-Backend integration tests require Docker and create isolated MySQL/Redis containers. Tests use local synthetic HTTP providers, never live billable requests. Run the backend with `./gradlew bootRun` and the UI with `npm --prefix frontend run dev` after configuring local storage. See [Development](docs/development.md) for browser, production-profile Docker and bounded-load verification.
+Backend integration tests require Docker and create isolated MySQL/Redis containers. Tests use local synthetic HTTP providers, never live billable requests. Run the backend with `./gradlew bootRun` and the UI with `npm --prefix frontend run dev` after configuring local storage. [CI](.github/workflows/verify.yml) also checks SDK compatibility, browser flows, production Docker configuration and bounded runtime behavior; see [Development](docs/development.md) to reproduce these checks.
 
 ## Documentation
 

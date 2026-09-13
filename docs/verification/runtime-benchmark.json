@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-09-13T05:02:53.591Z",
+  "verifiedAt": "2026-09-13T08:10:20.317Z",
   "result": "passed",
   "environment": {
     "gateway": "isolated Docker production profile",
@@ -32,28 +32,28 @@
   },
   "nonStreaming": {
     "count": 64,
-    "p50Ms": 54.85,
-    "p95Ms": 82.78,
-    "maxMs": 84.46,
-    "requestsPerSecond": 133.42
+    "p50Ms": 52.02,
+    "p95Ms": 70.43,
+    "maxMs": 76.13,
+    "requestsPerSecond": 140.42
   },
   "slowStreaming": {
     "count": 8,
-    "p50Ms": 873.37,
-    "p95Ms": 906.12,
-    "maxMs": 906.12
+    "p50Ms": 877.91,
+    "p95Ms": 886.98,
+    "maxMs": 886.98
   },
   "cancellation": {
     "count": 4,
-    "p50Ms": 2.36,
-    "p95Ms": 5.54,
-    "maxMs": 5.54
+    "p50Ms": 4.21,
+    "p95Ms": 10.38,
+    "maxMs": 10.38
   },
   "timeouts": {
     "count": 2,
-    "p50Ms": 115.27,
-    "p95Ms": 116.29,
-    "maxMs": 116.29
+    "p50Ms": 118.72,
+    "p95Ms": 119.32,
+    "maxMs": 119.32
   },
   "resources": {
     "peakActiveRequestsByPhase": {
@@ -65,9 +65,9 @@
     },
     "peakUpstreamConnections": 8,
     "activeRequestsAtEnd": 0,
-    "heapBeforeBytes": 104041064,
-    "heapPeakBytes": 154530952,
-    "heapAfterBytes": 102384192,
+    "heapBeforeBytes": 101330080,
+    "heapPeakBytes": 150585976,
+    "heapAfterBytes": 113559016,
     "heapMaxBytes": 536870910
   },
   "accounting": {

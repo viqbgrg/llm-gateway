@@ -9,7 +9,12 @@ public class AuthenticationService {
     private final GatewayProperties properties;
     public AuthenticationService(GatewayProperties properties) { this.properties = properties; }
     public boolean authenticate(HttpHeaders headers) {
-        String configured = properties.apiKey();
+        return bearer(headers, properties.apiKey());
+    }
+    public boolean authenticateAdmin(HttpHeaders headers) {
+        return bearer(headers, properties.adminApiKey());
+    }
+    private static boolean bearer(HttpHeaders headers, String configured) {
         if (configured.isBlank()) return false;
         if (headers.getOrEmpty(HttpHeaders.AUTHORIZATION).size() != 1 || headers.containsKey("x-api-key")) return false;
         String value = headers.getFirst(HttpHeaders.AUTHORIZATION);

@@ -28,16 +28,18 @@ This document is the source of truth for implementation status. A type or interf
 | 11. Hedged requests | Implemented | Delayed second/third attempts, shared replay/budget rules, one winner, loser/timer cancellation and metrics | Virtual-time coordinator and real HTTP cancellation tests |
 | 12. Complete admin UI | Implemented | Rules, policies, strategy selection, preview, health, discovery and bounded dashboard; independent runtime polling | Four browser scenarios, production build and archived screenshots |
 
-## Final W0–W12 Acceptance
+## Current Acceptance
 
 Verified from the working tree on 2026-09-13:
 
-- `./gradlew test build --rerun-tasks`: **432 tests in 20 suites**, zero failures, errors or skips. Fresh-schema HTTP tests and `V1UpgradeIntegrationTest` both passed against isolated MySQL/Redis.
-- `npm --prefix frontend run build`: type checking and production bundling passed. Vite still reports the existing large-chunk warning.
-- Production-profile Docker image built successfully. A fresh disposable MySQL/Redis stack became healthy and `/actuator/health` returned `UP`. MySQL's healthcheck now waits for TCP, preventing the initialization-only socket server from starting the gateway too early.
-- `npm --prefix frontend run test:e2e -- --reporter=list,json`: **4 passed** against that image, including configuration-to-inference behavior, circuit/discovery changes and runtime polling isolation.
+- `./gradlew test build :backend:generateSdkFixtures`: **459 tests in 24 suites**, zero failures, errors or skips. This includes regression coverage for encoded-path authentication, separate admin/inference keys, Responses history round trips, Anthropic streaming usage and batched configuration reads.
+- Official Python `anthropic==1.5.0` streaming accumulation: **8 passed** with generated text/tool fixtures and full/partial/unknown usage; no network calls.
+- `npm --prefix frontend run build`: type checking and production bundling passed. Component imports and lazy views reduced the main JavaScript bundle from approximately 1,085 kB to **442.54 kB**, without a large-chunk warning.
+- Production-profile Docker image built successfully. A fresh disposable MySQL/Redis stack became healthy; deployment checks passed for Redis authentication, private storage ports, independent access keys, protected encoded/matrix paths and public health.
+- `npm --prefix frontend run test:e2e -- --reporter=list`: **4 passed** against that image, including configuration-to-inference behavior, circuit/discovery changes and runtime polling isolation.
 - `node scripts/verify-runtime.mjs`: **78 logical requests = 78 physical attempts = 78 fixture calls**; latency/cancellation bounds passed, with no active fixture requests left.
 - W0–W12's **92 checklist items** are complete. Additive migrations V2–V5, encryption rollout/rotation, protocol limits and operating instructions are documented.
+- CI automates the backend, SDK, frontend, isolated deployment, browser and bounded-load sequence. The production update requires `GATEWAY_ADMIN_API_KEY` and `REDIS_PASSWORD` in addition to explicit existing deployment inputs; it adds no schema migration.
 
 See [acceptance evidence](verification/acceptance.md) for the work-package/test mapping, environment, exact bounded-load results, screenshots and verification limits. See [Development](development.md) to reproduce the isolated setup. All provider traffic in acceptance uses synthetic local fixtures.
 
@@ -48,6 +50,10 @@ Unified safe errors, separate retry/fallback behavior, replay/deadline/attempt b
 ## Historical Acceptance Checkpoints
 
 The records below preserve earlier milestones and their test counts. Their then-incomplete phase statuses are superseded by the final acceptance above.
+
+### Original W0–W12 Acceptance
+
+The first acceptance on 2026-09-13 passed **432 tests in 20 suites**, four browser scenarios and 78 bounded-load requests. It also corrected MySQL's fresh-volume readiness check to wait for TCP. At that point the frontend main bundle was approximately 1,085 kB with a size warning. The defect/production update above supersedes those totals while retaining the same documented protocol scope.
 
 ### Phase 1 Acceptance Verification
 

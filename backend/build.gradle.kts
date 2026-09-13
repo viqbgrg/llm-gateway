@@ -38,3 +38,13 @@ tasks.withType<Test> {
 tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
     archiveFileName.set("llm-gateway.jar")
 }
+
+tasks.register<JavaExec>("generateSdkFixtures") {
+    description = "Encode synthetic streams with the production adapters for SDK compatibility checks"
+    group = "verification"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass.set("com.llmgateway.protocol.SdkFixtureGenerator")
+    javaLauncher.set(javaToolchains.launcherFor(java.toolchain))
+    args(layout.buildDirectory.dir("sdk-fixtures").get().asFile.absolutePath)
+}

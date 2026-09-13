@@ -99,6 +99,53 @@ class ProtocolAdaptersTest {
                 {"model":"m","messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"https://example.invalid/i","detail":"high"}}]}]}
                 """)).isInstanceOf(GatewayException.class);
     }
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void acceptsItsOwnResponsesOutputAsTheNextTurnsExplicitHistory(boolean tool) throws Exception {
+        LlmResponse response = new LlmResponse("fixture-response", "public",
+                tool ? List.of(ContentBlock.text("calling"), new ToolCall("call_1", "lookup", object()))
+                        : List.of(ContentBlock.text("answer")),
+                tool ? FinishReason.TOOL_CALLS : FinishReason.STOP, null);
+        var input = MAPPER.createArrayNode().add(object().put("role", "user").put("content", "question"));
+        responses.encode(response).output().forEach(input::add);
+        if (tool) input.add(object().put("type", "function_call_output").put("call_id", "call_1").put("output", "result"));
+        else input.add(object().put("role", "user").put("content", "continue"));
+        var request = parse(Protocol.RESPONSES, object().put("model", "public").set("input", input).toString());
+        assertThat(request.messages().get(1).content()).isEqualTo(response.content());
+        assertThat(request.messages().getLast().role()).isEqualTo(tool ? MessageRole.TOOL : MessageRole.USER);
+    }
+
+    @ParameterizedTest @ValueSource(strings = {
+            "\"status\":\"in_progress\"", "\"status\":17", "\"id\":{}", "\"unexpected\":true"
+    })
+    void rejectsInvalidOrUnfinishedResponsesHistoryMetadata(String metadata) {
+        assertThatThrownBy(() -> parse(Protocol.RESPONSES, "{\"model\":\"public\",\"input\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":\"text\"," + metadata + "}]}"))
+                .isInstanceOf(GatewayException.class);
+    }
+
+    @Test void rejectsAnnotationsThatTheUpstreamCannotRepresent() {
+        assertThatThrownBy(() -> parse(Protocol.RESPONSES, """
+                {"model":"public","input":[{"type":"message","role":"assistant","content":[
+                  {"type":"output_text","text":"answer","annotations":[{"type":"url_citation","url":"https://fixture.invalid"}]}]}]}
+                """)).isInstanceOf(GatewayException.class);
+    }
+
+    @Test void acceptsInterleavedStreamingOutputAsOneAssistantTurn() throws Exception {
+        var events = reactor.core.publisher.Flux.<LlmStreamEvent>just(new LlmStreamEvent.MessageStart("fixture"),
+                new LlmStreamEvent.ToolCallStart("fixture", 0, "call_1", "lookup"),
+                new LlmStreamEvent.ToolCallDelta("fixture", 0, "call_1", "{}"),
+                new LlmStreamEvent.ContentBlockStart("fixture", 1, ContentBlockType.TEXT),
+                new LlmStreamEvent.TextDelta("fixture", 1, "calling"),
+                new LlmStreamEvent.ToolCallEnd("fixture", 0, "call_1"),
+                new LlmStreamEvent.ContentBlockEnd("fixture", 1),
+                new LlmStreamEvent.MessageEnd("fixture", FinishReason.TOOL_CALLS));
+        var completed = read(responses.encodeStream(events, "public").collectList().block().getLast().data()).get("response");
+        var input = MAPPER.createArrayNode();
+        completed.get("output").forEach(input::add);
+        input.add(object().put("type", "function_call_output").put("call_id", "call_1").put("output", "result"));
+        var request = parse(Protocol.RESPONSES, object().put("model", "public").set("input", input).toString());
+        assertThat(request.messages()).extracting(Message::role).containsExactly(MessageRole.ASSISTANT, MessageRole.TOOL);
+        assertThat(request.messages().getFirst().content()).containsExactly(new ToolCall("call_1", "lookup", object()), ContentBlock.text("calling"));
+    }
     private LlmRequest parse(Protocol protocol, String json) throws Exception {
         RequestContext context = new RequestContext("fixture", protocol, Instant.EPOCH, 0);
         return switch (protocol) {

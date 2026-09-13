@@ -16,4 +16,20 @@ class AuthenticationServiceTest {
         headers.setBearerAuth("wrong");
         assertFalse(service.authenticate(headers));
     }
+
+    @Test
+    void separatesInferenceAndAdministrationCredentials() {
+        AuthenticationService service = new AuthenticationService(new GatewayProperties("client-key", "fixture", "admin-key"));
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth("client-key");
+        assertTrue(service.authenticate(headers));
+        assertFalse(service.authenticateAdmin(headers));
+        headers.setBearerAuth("admin-key");
+        assertFalse(service.authenticate(headers));
+        assertTrue(service.authenticateAdmin(headers));
+        headers.clear();
+        headers.set("x-api-key", "client-key");
+        assertTrue(service.authenticateAnthropic(headers));
+        assertFalse(service.authenticateAdmin(headers));
+    }
 }

@@ -43,8 +43,9 @@ public class CredentialService implements CredentialResolver {
         encryption = new CredentialEncryption(keys, properties.activeKeyId());
         if (properties.encryptedWrites() && properties.activeKeyId() == null) throw new IllegalArgumentException("Encrypted writes require an active key");
         if (environment.acceptsProfiles(Profiles.of("prod", "production")) && (!properties.encryptedWrites()
-                || gateway.apiKey().isBlank() || gateway.apiKey().equals("dev-gateway-key"))) {
-            throw new IllegalArgumentException("Production requires encryption and an explicit gateway key");
+                || gateway.apiKey().isBlank() || gateway.apiKey().equals("dev-gateway-key")
+                || gateway.adminApiKey().equals(gateway.apiKey()) || gateway.adminApiKey().equals("dev-gateway-key"))) {
+            throw new IllegalArgumentException("Production requires encryption and distinct, explicit gateway and admin keys");
         }
     }
     public StoredCredential store(String providerId, String supplied, String plaintext, String ciphertext) {

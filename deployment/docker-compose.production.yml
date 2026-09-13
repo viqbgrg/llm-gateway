@@ -1,8 +1,22 @@
 services:
+  mysql:
+    ports: !reset []
+    environment:
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set an explicit production database password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set an explicit production root password}
+  redis:
+    ports: !reset []
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set an explicit production Redis password}
+    command: ["sh", "-ec", "exec docker-entrypoint.sh redis-server --requirepass \"$$REDIS_PASSWORD\""]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -qx PONG"]
   llm-gateway:
     environment:
       SPRING_PROFILES_ACTIVE: production
       GATEWAY_API_KEY: ${GATEWAY_API_KEY:?Set an explicit production gateway key}
+      GATEWAY_ADMIN_API_KEY: ${GATEWAY_ADMIN_API_KEY:?Set a separate production admin key}
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:?Set an explicit production Redis password}
       GATEWAY_CREDENTIALS_ENCRYPTED_WRITES: "true"
       GATEWAY_CREDENTIALS_ALLOW_LEGACY_READS: ${GATEWAY_ALLOW_LEGACY_READS:-false}
       GATEWAY_CREDENTIALS_ACTIVE_KEY_ID: ${GATEWAY_ACTIVE_KEY_ID:?Set the active keyring ID}

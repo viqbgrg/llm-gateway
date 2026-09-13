@@ -39,6 +39,7 @@ async function remove(row: ModelRule) {
     <el-table-column label="Virtual model"><template #default="{ row }">{{ admin.virtualModels.find(v => v.id === row.virtualModelId)?.name ?? 'No target' }}</template></el-table-column>
     <el-table-column prop="priority" label="Priority" width="100" />
     <el-table-column label="Enabled" width="100"><template #default="{ row }">{{ row.enabled ? 'Yes' : 'No' }}</template></el-table-column>
+    <!-- @vue-generic {ModelRule} -->
     <el-table-column label="Actions" width="180"><template #default="{ row }"><el-button text @click="edit(row)">Edit rule</el-button><el-button text type="danger" @click="remove(row)">Delete rule</el-button></template></el-table-column>
   </el-table>
   <el-dialog v-model="visible" :title="id ? 'Edit rule' : 'Add rule'" width="520px" :close-on-click-modal="false">

@@ -4,6 +4,7 @@ import com.llmgateway.admin.*;
 import com.llmgateway.inference.*;
 import com.llmgateway.model.*;
 import java.time.Duration;
+import java.util.List;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.ReactiveTransactionManager;
@@ -11,9 +12,11 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.DefaultTransactionDefinition;
 import org.springframework.transaction.reactive.TransactionalOperator;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.Flux;
 
 @Component
 public class ConfigurationStore {
+    private static final int LOOKUP_BATCH_SIZE = 256;
     private final VirtualModelResolver resolver;
     private final VirtualModelRepository virtualModels;
     private final BindingRepository bindings;
@@ -47,25 +50,37 @@ public class ConfigurationStore {
         return (vm.routingPolicyId() == null ? Mono.just(defaults)
                 : policies.findById(vm.routingPolicyId()).map(RoutingPolicyEntity::domain)
                     .switchIfEmpty(Mono.error(new GatewayException(GatewayError.CONFIGURATION_CHANGED))))
-                .flatMap(policy -> bindings.findByVirtualModelId(vm.id()).concatMap(this::candidate).collectList()
+                .flatMap(policy -> candidates(vm.id())
                         .map(candidates -> new ConfigurationSnapshot(new VirtualModel(vm.id(), vm.name(), vm.displayName(), vm.description(),
                                 vm.enabled(), vm.routingPolicyId(), vm.createdAt(), vm.updatedAt()), vm.version(), policy, candidates)));
     }
-    private Mono<RoutingCandidate> candidate(BindingEntity b) {
-        return providers.findById(b.providerId()).flatMap(p -> models.findById(b.providerModelId()).map(m -> {
-            ModelCapabilities modelCapabilities;
-            ModelCapabilities override;
-            String issue = null;
-            try { modelCapabilities = CapabilityChecker.parse(m.capabilities()); override = CapabilityChecker.parse(b.capabilitiesOverride()); }
-            catch (IllegalArgumentException ignored) { modelCapabilities = ModelCapabilities.empty(); override = ModelCapabilities.empty(); issue = "INVALID_CAPABILITIES"; }
-            return new RoutingCandidate(new VirtualModelBinding(b.id(), b.virtualModelId(), b.providerId(), b.providerModelId(),
-                    b.enabled(), b.priority(), b.translationEnabled(), b.sourceProtocol(), b.targetProtocol(), override, b.createdAt(), b.updatedAt()),
-                    new Provider(p.id(), p.name(), p.baseUrl(), null, p.enabled(), p.protocol(), Duration.ofMillis(p.connectTimeoutMs()),
-                            Duration.ofMillis(p.readTimeoutMs()), Duration.ofMillis(p.requestTimeoutMs()), p.maxRetries(), p.modelDiscoveryEnabled(),
-                            p.modelDiscoveryUrl(), Duration.ofMillis(p.modelDiscoveryIntervalMs()), p.createdAt(), p.updatedAt()),
-                    new ProviderModel(m.id(), m.providerId(), m.modelName(), m.displayName(), m.status(), modelCapabilities, null,
-                            m.firstSeenAt(), m.lastSeenAt(), m.createdAt(), m.updatedAt()), b.version(), p.version(), m.routingVersion(), issue);
-        })).switchIfEmpty(Mono.error(new GatewayException(GatewayError.CONFIGURATION_CHANGED)));
+    private Mono<List<RoutingCandidate>> candidates(String virtualModelId) {
+        return bindings.findByVirtualModelId(virtualModelId).collectList().flatMap(rows -> {
+            var providerIds = rows.stream().map(BindingEntity::providerId).distinct().toList();
+            var modelIds = rows.stream().map(BindingEntity::providerModelId).distinct().toList();
+            // Keep the reads sequential on the transaction's connection and bound each IN clause.
+            return Flux.fromIterable(providerIds).buffer(LOOKUP_BATCH_SIZE).concatMap(providers::findAllById)
+                    .collectMap(ProviderEntity::id).flatMap(providerRows ->
+                            Flux.fromIterable(modelIds).buffer(LOOKUP_BATCH_SIZE).concatMap(models::findAllById)
+                                    .collectMap(ProviderModelEntity::id)
+                                    .map(modelRows -> rows.stream().map(b -> candidate(b,
+                                            providerRows.get(b.providerId()), modelRows.get(b.providerModelId()))).toList()));
+        });
+    }
+    private RoutingCandidate candidate(BindingEntity b, ProviderEntity p, ProviderModelEntity m) {
+        if (p == null || m == null) throw new GatewayException(GatewayError.CONFIGURATION_CHANGED);
+        ModelCapabilities modelCapabilities;
+        ModelCapabilities override;
+        String issue = null;
+        try { modelCapabilities = CapabilityChecker.parse(m.capabilities()); override = CapabilityChecker.parse(b.capabilitiesOverride()); }
+        catch (IllegalArgumentException ignored) { modelCapabilities = ModelCapabilities.empty(); override = ModelCapabilities.empty(); issue = "INVALID_CAPABILITIES"; }
+        return new RoutingCandidate(new VirtualModelBinding(b.id(), b.virtualModelId(), b.providerId(), b.providerModelId(),
+                b.enabled(), b.priority(), b.translationEnabled(), b.sourceProtocol(), b.targetProtocol(), override, b.createdAt(), b.updatedAt()),
+                new Provider(p.id(), p.name(), p.baseUrl(), null, p.enabled(), p.protocol(), Duration.ofMillis(p.connectTimeoutMs()),
+                        Duration.ofMillis(p.readTimeoutMs()), Duration.ofMillis(p.requestTimeoutMs()), p.maxRetries(), p.modelDiscoveryEnabled(),
+                        p.modelDiscoveryUrl(), Duration.ofMillis(p.modelDiscoveryIntervalMs()), p.createdAt(), p.updatedAt()),
+                new ProviderModel(m.id(), m.providerId(), m.modelName(), m.displayName(), m.status(), modelCapabilities, null,
+                        m.firstSeenAt(), m.lastSeenAt(), m.createdAt(), m.updatedAt()), b.version(), p.version(), m.routingVersion(), issue);
     }
     public Mono<Boolean> current(String logicalModel, ConfigurationSnapshot snapshot, RoutingCandidate candidate) {
         return load(logicalModel).map(latest -> latest.virtualModel().id().equals(snapshot.virtualModel().id())

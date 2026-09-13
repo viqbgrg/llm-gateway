@@ -3,7 +3,7 @@ import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import type { Resource } from '../src/types/admin'
 
-const apiKey = process.env.GATEWAY_API_KEY ?? 'dev-gateway-key'
+const apiKey = process.env.GATEWAY_ADMIN_API_KEY ?? process.env.GATEWAY_API_KEY ?? 'dev-gateway-key'
 const prefix = 'e2e-' + Date.now().toString(36)
 
 async function selectOption(page: Page, label: string, option: string) {

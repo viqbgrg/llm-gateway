@@ -8,6 +8,7 @@ import java.time.Clock;
 import java.util.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.core.io.buffer.DefaultDataBufferFactory;
 import reactor.core.publisher.Flux;
@@ -65,6 +66,28 @@ class StreamingProtocolTest {
         assertThat(ClientSseEncoder.meaningful(events.getFirst())).isFalse();
         assertThat(ClientSseEncoder.content(events.getLast())).isFalse();
     }
+    @ParameterizedTest @MethodSource("usageSamples")
+    void alwaysEmitsMergeableAnthropicUsageWithoutInventingTokenCounts(Usage usage) {
+        List<LlmStreamEvent> events = new ArrayList<>(List.of(new LlmStreamEvent.MessageStart("m"),
+                new LlmStreamEvent.ContentBlockStart("m", 0, ContentBlockType.TEXT),
+                new LlmStreamEvent.TextDelta("m", 0, "answer"), new LlmStreamEvent.ContentBlockEnd("m", 0)));
+        if (usage != null) events.add(new LlmStreamEvent.UsageUpdate("m", usage));
+        events.add(new LlmStreamEvent.MessageEnd("m", FinishReason.STOP));
+        var wire = ClientSseEncoder.anthropic(Flux.fromIterable(events), "public").collectList().block();
+        var initial = read(wire.getFirst().data()).path("message").path("usage");
+        assertThat(initial.isObject()).isTrue();
+        assertThat(initial.get("input_tokens").isNull()).isTrue();
+        assertThat(initial.get("output_tokens").isNull()).isTrue();
+        var complete = read(wire.get(wire.size() - 2).data()).path("usage");
+        assertThat(complete.isObject()).isTrue();
+        assertThat(complete).isEqualTo(read(object().put("input_tokens", usage == null ? null : usage.inputTokens())
+                .put("output_tokens", usage == null ? null : usage.outputTokens()).toString()));
+    }
+
+    static java.util.stream.Stream<Usage> usageSamples() {
+        return java.util.stream.Stream.of(null, new Usage(4L, 2L, 6L), new Usage(null, 2L, null), new Usage(4L, null, null));
+    }
+
     private com.fasterxml.jackson.databind.JsonNode tool(int index, String id, String name, String arguments) {
         var function = object().put("arguments", arguments);
         if (name != null) function.put("name", name);

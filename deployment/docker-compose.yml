@@ -37,6 +37,7 @@ services:
       SPRING_FLYWAY_PASSWORD: ${MYSQL_PASSWORD:-llm_gateway}
       SPRING_REDIS_HOST: redis
       GATEWAY_API_KEY: ${GATEWAY_API_KEY:-dev-gateway-key}
+      GATEWAY_ADMIN_API_KEY: ${GATEWAY_ADMIN_API_KEY:-}
     depends_on:
       mysql: { condition: service_healthy }
       redis: { condition: service_healthy }

@@ -27,6 +27,8 @@ Controllers adapt HTTP only. `protocol/` implements client contracts; `provider/
 
 Configuration is read in a short transaction and version-checked again before dispatch. No inference transaction holds MySQL locks across an upstream network call. Cleanup follows committed configuration writes; correctness also relies on version fingerprints, not Pub/Sub delivery. Provider-model observation versions are separate from routing versions, so ordinary catalog refreshes cannot reset circuits or preferences.
 
+A snapshot reads bindings once, deduplicates their provider/model IDs and fetches each entity type in batches of at most 256 IDs. Reads stay sequential on the transaction connection. Missing references reject the whole snapshot, and provider credentials remain excluded. Health/dashboard reads reuse one snapshot per distinct virtual model, with up to eight concurrent binding runtime reads; a virtual model deleted during a refresh is omitted.
+
 ## Reactive streaming and execution
 
 SSE framing is incremental across arbitrary byte and UTF-8 boundaries. Client encoders consume typed events, not a collected full response. Event, argument and coordinator queues are bounded. Transport-first-event latency, first effective content (TTFT) and complete attempt duration are distinct measurements.
@@ -59,7 +61,7 @@ All keys are constructed through `RedisKeyNamespace`, with default prefix `llm-g
 
 ## Metrics and logs
 
-`GET /actuator/prometheus` requires the gateway bearer token. `/actuator/health` (including deployment health probes) remains public. Metrics are per application instance; collect all instances in an external Prometheus for history. The UI reads shared Redis APIs, not scrape text.
+`GET /actuator/prometheus` requires the admin bearer token. `/actuator/health` and its subpaths (including deployment health probes) remain public. Authentication uses WebFlux's parsed path, so percent-encoded segments and matrix parameters cannot bypass the protection. Metrics are per application instance; collect all instances in an external Prometheus for history. The UI reads shared Redis APIs, not scrape text.
 
 | Exported Prometheus name | Meaning / labels |
 | --- | --- |
@@ -92,4 +94,4 @@ The dashboard's `p95UpperBoundMs` is the upper boundary of a bucket in a **merge
 
 ## Deployment boundaries
 
-Apply additive Flyway V2–V5 after unchanged V1; see [migration and credentials](provider.md). Production profiles require encrypted writes and an explicit non-default gateway token. Keyrings are deployment files, not database configuration. Deploy behind TLS and restrict admin, storage and provider egress access. Admin and inference currently share one gateway token; per-user RBAC, per-client quotas, Redis Cluster topology and external Secret Manager integration are not claimed by this release.
+Apply additive Flyway V2–V5 after unchanged V1; see [migration and credentials](provider.md). Production profiles require encrypted writes and distinct, explicit inference/admin keys. The production compose overlay authenticates Redis and removes MySQL/Redis host ports. Keyrings are deployment files, not database configuration. Deploy behind TLS and restrict admin and provider egress access. Local development retains a shared-key fallback. Per-user RBAC, multiple client keys/quotas, Redis Cluster topology and external Secret Manager integration remain outside this release.

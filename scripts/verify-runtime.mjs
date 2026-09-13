@@ -9,6 +9,7 @@ import { performance } from 'node:perf_hooks'
 // Run against a dedicated test stack. All provider requests stay on this local fixture.
 const gateway = process.env.GATEWAY_URL ?? 'http://127.0.0.1:18090'
 const gatewayKey = process.env.GATEWAY_API_KEY
+const adminKey = process.env.GATEWAY_ADMIN_API_KEY ?? gatewayKey
 assert(gatewayKey, 'Set GATEWAY_API_KEY for the isolated verification stack')
 const providerKey = 'synthetic-bounded-load-provider-key'
 const prefix = 'bounded-' + randomUUID().slice(0, 8)
@@ -67,7 +68,7 @@ const fixtureUrl = 'http://' + (process.env.PROVIDER_FIXTURE_HOST ?? '127.0.0.1'
 
 async function api(path, method = 'GET', body) {
   const response = await fetch(gateway + '/api/admin/' + path, {
-    method, headers: { Authorization: 'Bearer ' + gatewayKey, 'Content-Type': 'application/json' },
+    method, headers: { Authorization: 'Bearer ' + adminKey, 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(10000)
   })
   assert(response.ok, 'Administration returned HTTP ' + response.status)
@@ -103,7 +104,7 @@ function samples(scrape, name, filter = () => true) {
     .reduce((total, line) => total + Number(line.split(' ').at(-1)), 0)
 }
 async function metrics() {
-  const response = await fetch(gateway + '/actuator/prometheus', { headers: { Authorization: 'Bearer ' + gatewayKey }, signal: AbortSignal.timeout(5000) })
+  const response = await fetch(gateway + '/actuator/prometheus', { headers: { Authorization: 'Bearer ' + adminKey }, signal: AbortSignal.timeout(5000) })
   assert(response.ok, 'Metrics endpoint must be available to the verification key')
   const scrape = await response.text()
   return { requests: samples(scrape, 'llm_gateway_requests_total'), attempts: samples(scrape, 'llm_gateway_provider_attempts_total'),

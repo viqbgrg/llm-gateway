@@ -1,6 +1,6 @@
 # Providers
 
-Providers hold channel configuration; provider models are separate records. Virtual models and bindings do not become aliases for providers. Admin APIs require the gateway bearer token. API keys are write-only and appear only as `***` or an unconfigured value in responses.
+Providers hold channel configuration; provider models are separate records. Virtual models and bindings do not become aliases for providers. Admin APIs require the admin bearer token (`GATEWAY_ADMIN_API_KEY`). Provider API keys are write-only and appear only as `***` or an unconfigured value in responses.
 
 ## Administration and transport
 
@@ -27,7 +27,7 @@ It is explicitly allowed even for a disabled provider. The default catalog URL i
 
 ## Production credentials
 
-Development defaults are **encrypted writes disabled, legacy plaintext reads enabled**. These defaults are for local compatibility, not production storage. The `prod` and `production` profiles refuse startup without encrypted writes and an explicit, nonempty gateway token different from `dev-gateway-key`.
+Development defaults are **encrypted writes disabled, legacy plaintext reads enabled**. An unset/blank `GATEWAY_ADMIN_API_KEY` falls back to `GATEWAY_API_KEY` locally. The `prod` and `production` profiles require encrypted writes and two distinct, explicit access keys; neither can be `dev-gateway-key`. Use the inference key only for `/v1/**` and the admin key for `/api/admin/**` and non-health Actuator endpoints, including Prometheus.
 
 `CredentialEncryption` uses JCA AES-256-GCM with a random 12-byte nonce and a 128-bit authentication tag. Associated data binds version, key ID and provider ID. The envelope is:
 
@@ -39,15 +39,23 @@ A deployment keyring is a JSON object mapping key IDs (`[A-Za-z0-9_-]{1,64}`) to
 
 | Spring setting | Environment name | Purpose |
 | --- | --- | --- |
+| `gateway.api-key` | `GATEWAY_API_KEY` | Inference client authentication |
+| `gateway.admin-api-key` | `GATEWAY_ADMIN_API_KEY` | Administration and metrics authentication |
 | `gateway.credentials.encrypted-writes` | `GATEWAY_CREDENTIALS_ENCRYPTED_WRITES` | Encrypt replacements and migrated keys |
 | `gateway.credentials.allow-legacy-reads` | `GATEWAY_CREDENTIALS_ALLOW_LEGACY_READS` | Transitional plaintext reads |
 | `gateway.credentials.active-key-id` | `GATEWAY_CREDENTIALS_ACTIVE_KEY_ID` | Key used for new envelopes |
 | `gateway.credentials.keyring-file` | `GATEWAY_CREDENTIALS_KEYRING_FILE` | Keyring path visible inside the process |
 
-The production compose overlay supplies those settings and activates the production profile. Its external inputs are `GATEWAY_API_KEY`, `GATEWAY_ACTIVE_KEY_ID` and absolute host path `GATEWAY_KEYRING_FILE`; optional `GATEWAY_ALLOW_LEGACY_READS` defaults to `false`.
+The production compose overlay supplies those settings and activates the production profile. Required external inputs are:
+
+- `GATEWAY_API_KEY` and a different `GATEWAY_ADMIN_API_KEY`.
+- `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD` and `REDIS_PASSWORD`.
+- `GATEWAY_ACTIVE_KEY_ID` and absolute host path `GATEWAY_KEYRING_FILE`.
+
+Optional `GATEWAY_ALLOW_LEGACY_READS` defaults to `false`. Use Docker Compose 2.24.4 or newer for the overlay's `!reset` support. It removes MySQL/Redis host ports, enables Redis password authentication and injects the same password as `SPRING_DATA_REDIS_PASSWORD` into the gateway. The gateway health probe remains public.
 
 ```bash
-# Export the above inputs securely, plus non-default MySQL credentials.
+# Export the required inputs securely.
 docker compose -f deployment/docker-compose.yml \
   -f deployment/docker-compose.production.yml config --quiet
 docker compose -f deployment/docker-compose.yml \
@@ -55,6 +63,8 @@ docker compose -f deployment/docker-compose.yml \
 ```
 
 The keyring is mounted read-only at `/run/secrets/provider-keyring.json`. Do not print resolved compose configuration into public logs, commit `.env` files or log credential service objects. This release implements local encrypted storage, not an external Secret Manager integration.
+
+When upgrading an existing production deployment to this security update, supply the new admin and Redis passwords before recreating the stack, update UI/automation/Prometheus to use the admin key, and use internal container networking for storage access. This update adds no database migration; the latest schema remains V5.
 
 ## Schema upgrade and plaintext migration
 
@@ -76,7 +86,7 @@ Upgrade procedure:
 
 ```bash
 curl --fail http://localhost:8080/api/admin/credentials/migrate \
-  -H "Authorization: Bearer $GATEWAY_API_KEY" \
+  -H "Authorization: Bearer $GATEWAY_ADMIN_API_KEY" \
   -H 'Content-Type: application/json' \
   -d '{"batchSize":100,"rotate":false}'
 ```

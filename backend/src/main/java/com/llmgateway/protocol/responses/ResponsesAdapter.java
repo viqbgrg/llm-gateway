@@ -60,18 +60,17 @@ public class ResponsesAdapter implements ClientProtocolAdapter<ResponsesRequest,
     private static void addItem(List<Message> messages, JsonNode item) {
         String type = item.has("type") ? text(item, "type") : "message";
         if (type.equals("function_call")) {
-            fields(item, "type", "call_id", "name", "arguments");
+            fields(item, "type", "call_id", "name", "arguments", "id", "status");
+            historyMetadata(item);
             ToolCall call = new ToolCall(text(item, "call_id"), text(item, "name"), arguments(text(item, "arguments")));
-            if (!messages.isEmpty() && messages.getLast().role() == MessageRole.ASSISTANT) {
-                var previous = new ArrayList<>(messages.removeLast().content()); previous.add(call);
-                messages.add(new Message(MessageRole.ASSISTANT, previous));
-            } else messages.add(new Message(MessageRole.ASSISTANT, List.of(call)));
+            addMessage(messages, MessageRole.ASSISTANT, List.of(call));
         } else if (type.equals("function_call_output")) {
             fields(item, "type", "call_id", "output");
             messages.add(new Message(MessageRole.TOOL, List.of(new ToolResult(text(item, "call_id"),
                     List.of(ContentBlock.text(text(item, "output"))), false))));
         } else if (type.equals("message")) {
-            fields(item, "type", "role", "content");
+            fields(item, "type", "role", "content", "id", "status");
+            historyMetadata(item);
             MessageRole role = switch (text(item, "role")) {
                 case "user" -> MessageRole.USER;
                 case "assistant" -> MessageRole.ASSISTANT;
@@ -86,8 +85,13 @@ public class ResponsesAdapter implements ClientProtocolAdapter<ResponsesRequest,
                 if (content == null || !content.isArray()) throw GatewayException.invalid();
                 for (JsonNode block : content) {
                     String kind = text(block, "type");
-                    if (kind.equals("input_text") || kind.equals("output_text") && role == MessageRole.ASSISTANT) {
+                    if (kind.equals("input_text")) {
                         fields(block, "type", "text"); blocks.add(ContentBlock.text(text(block, "text")));
+                    } else if (kind.equals("output_text") && role == MessageRole.ASSISTANT) {
+                        fields(block, "type", "text", "annotations");
+                        JsonNode annotations = block.get("annotations");
+                        if (annotations != null && !annotations.isNull() && (!annotations.isArray() || !annotations.isEmpty())) throw GatewayException.invalid();
+                        blocks.add(ContentBlock.text(text(block, "text")));
                     } else if (kind.equals("input_image") && role == MessageRole.USER) {
                         fields(block, "type", "image_url", "detail");
                         if (block.has("detail") && !"auto".equals(text(block, "detail"))) throw GatewayException.invalid();
@@ -95,8 +99,22 @@ public class ResponsesAdapter implements ClientProtocolAdapter<ResponsesRequest,
                     } else throw GatewayException.invalid();
                 }
             }
-            messages.add(new Message(role, blocks));
+            addMessage(messages, role, blocks);
         } else throw GatewayException.invalid();
+    }
+    private static void historyMetadata(JsonNode item) {
+        String id = optionalText(item, "id");
+        if (id != null && (id.isBlank() || id.length() > 512)) throw GatewayException.invalid();
+        String status = optionalText(item, "status");
+        if (status != null && !status.equals("completed") && !status.equals("incomplete")) throw GatewayException.invalid();
+    }
+    private static void addMessage(List<Message> messages, MessageRole role, List<ContentBlock> blocks) {
+        // Responses can split one assistant turn into text and function-call items.
+        if (role == MessageRole.ASSISTANT && !messages.isEmpty() && messages.getLast().role() == role) {
+            var combined = new ArrayList<>(messages.removeLast().content());
+            combined.addAll(blocks);
+            messages.add(new Message(role, combined));
+        } else messages.add(new Message(role, blocks));
     }
     @Override public ResponsesResponse encode(LlmResponse response) {
         var output = new ArrayList<JsonNode>();

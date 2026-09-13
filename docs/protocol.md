@@ -25,7 +25,7 @@ Anthropic/Responses client requests require a binding with the matching `sourceP
 
 ### HTTP envelope and accepted fields
 
-All endpoints require JSON and a gateway bearer token. Anthropic also accepts `x-api-key` instead of bearer authentication, but rejects requests supplying both. Anthropic requires `anthropic-version: 2023-06-01`. The gateway token is never used as the provider credential.
+All inference endpoints require JSON and the inference token (`GATEWAY_API_KEY`). Anthropic also accepts `x-api-key` instead of bearer authentication, but rejects requests supplying both. Anthropic requires `anthropic-version: 2023-06-01`. The separately configured admin key cannot authenticate inference, and access keys are never used as provider credentials.
 
 | Client | Accepted top-level request fields |
 | --- | --- |
@@ -37,6 +37,7 @@ All endpoints require JSON and a gateway bearer token. Anthropic also accepts `x
 - Anthropic `max_tokens` is mandatory. Chat `stream_options` supports only `include_usage=true` together with `stream=true`.
 - Examples of rejected Chat parameters: `logprobs`, `parallel_tool_calls`, `reasoning_effort`, `max_completion_tokens`, and `n > 1`.
 - Responses requires explicit `input`; `previous_response_id`, item references, background operation, `store=true`, built-in tools and stateful retrieval are not implemented.
+- Responses accepts materialized message/function history, including its own `output` items copied into a later `input`. Optional `id` is nonblank and at most 512 characters; optional `status` is `completed` or `incomplete`. Output-text `annotations` must be absent, null or empty; nonempty annotations and unknown fields are rejected. Adjacent assistant text/function items are combined while preserving their order and tool associations.
 - Function definitions accept an object parameter schema. Generated output is not locally validated against that schema. The more general IR ranges below are further restricted by each adapter.
 
 ### Semantic conversion
@@ -56,6 +57,8 @@ Tools are function-only. History may include parallel calls and their associated
 | `UNKNOWN` | Rejected by this upstream adapter | Not fabricated as a normal finish | Not fabricated as a normal finish |
 
 Usage is copied only when reported. Missing or partial counters remain unknown; no zero or total is invented. Anthropic exposes its input/output fields, while Chat/Responses can also expose a reported total. A cancelled upstream may still incur charges even when no usage was returned.
+
+Anthropic SSE always includes `message_start.message.usage` and `message_delta.usage`, allowing SDKs to accumulate the final message. Unknown input/output counts are JSON `null`, including at message start before upstream usage is available; final reported counts are retained. The default Python `anthropic==1.5.0` client's public `messages.stream().get_final_message()` is verified for text/tools and full/partial/absent usage. Strict client-side validation that requires integer counts for unknown usage is outside that compatibility check.
 
 ### Transport, streaming and errors
 
@@ -209,6 +212,8 @@ The event contract is transport-independent. HTTP/SSE codecs, cancellation and c
 ```
 
 `backend/src/test/resources/fixtures/manifest.json` links synthetic text/conversation requests, normalized IR or expected upstream JSON, upstream/client responses, raw SSE bytes, expected events and negative cases. `ProtocolAdaptersTest` compares three-protocol image/tool-history conversion and response encoding. `StreamingProtocolTest` varies byte fragmentation and checks all three encoders. `GatewayRuntimeIntegrationTest` exercises real HTTP authentication, capability refusals with zero calls, tools, structured output, body/frame limits, cancellation, safe errors and sanitized logs/metric tags.
+
+`SdkFixtureGenerator` writes streams from the actual encoder for `scripts/verify-sdk.py`, which exercises the pinned official SDK through an in-memory HTTP transport. See [SDK verification](development.md#sdk-compatibility) for commands; no provider or SDK request reaches the network.
 
 ```bash
 ./gradlew test --tests 'com.llmgateway.protocol.*' --tests 'com.llmgateway.inference.*'

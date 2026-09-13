@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import { Connection, Cpu, Key, Link, Plus, Refresh, Delete, Edit, Collection } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import AdminEditor from './components/AdminEditor.vue'
-import ModelRules from './components/ModelRules.vue'
-import RoutingPolicies from './components/RoutingPolicies.vue'
-import RoutingPreview from './components/RoutingPreview.vue'
-import RuntimeView from './components/RuntimeView.vue'
 import { useAdminStore } from './stores/admin'
 import type { Binding, EditorState, Provider, ProviderModel, Resource, VirtualModel } from './types/admin'
+
+const AdminEditor = defineAsyncComponent(() => import('./components/AdminEditor.vue'))
+const ModelRules = defineAsyncComponent(() => import('./components/ModelRules.vue'))
+const RoutingPolicies = defineAsyncComponent(() => import('./components/RoutingPolicies.vue'))
+const RoutingPreview = defineAsyncComponent(() => import('./components/RoutingPreview.vue'))
+const RuntimeView = defineAsyncComponent(() => import('./components/RuntimeView.vue'))
 
 const store = useAdminStore()
 const active = ref<'overview' | Resource | 'model-rules' | 'routing-policies' | 'routing-preview' | 'health' | 'discovery'>('overview')
@@ -150,9 +151,11 @@ onMounted(() => { if (store.apiKey) void refresh() })
         <el-table-column prop="name" label="Name" min-width="150" />
         <el-table-column prop="baseUrl" label="Base URL" min-width="200" show-overflow-tooltip />
         <el-table-column prop="protocol" label="Protocol" min-width="170" />
+        <!-- @vue-generic {Provider} -->
         <el-table-column label="Enabled" width="100">
           <template #default="{ row }"><el-switch :model-value="row.enabled" :disabled="busy" :loading="pending === 'toggle:' + row.id" :aria-label="'Enable ' + row.name" @change="toggleProvider(row)" /></template>
         </el-table-column>
+        <!-- @vue-generic {Provider} -->
         <el-table-column label="Actions" width="360" fixed="right">
           <template #default="{ row }">
             <el-button text :loading="pending === 'test:' + row.id" :disabled="busy" @click="testConnection(row)">Test connection</el-button>
@@ -175,6 +178,7 @@ onMounted(() => { if (store.apiKey) void refresh() })
           </el-table-column>
           <el-table-column label="Last seen" min-width="170"><template #default="{ row }">{{ new Date(row.lastSeenAt).toLocaleString() }}</template></el-table-column>
           <el-table-column label="Discovery" min-width="160"><template #default="{ row }">{{ row.removalSource === 'DISCOVERY' ? 'Removed by discovery' : row.missingCount ? row.missingCount + ' missing observations' : 'Present / not yet checked' }}</template></el-table-column>
+          <!-- @vue-generic {ProviderModel} -->
           <el-table-column label="Actions" width="230" fixed="right">
             <template #default="{ row }">
               <el-button text :disabled="busy" :loading="pending === 'toggle:' + row.id" @click="toggleModel(row)">{{ row.status === 'ACTIVE' ? 'Disable' : 'Enable' }}</el-button>
@@ -188,7 +192,9 @@ onMounted(() => { if (store.apiKey) void refresh() })
         <el-table-column prop="name" label="Name" min-width="180" />
         <el-table-column prop="displayName" label="Display name" min-width="180" />
         <el-table-column prop="description" label="Description" min-width="220" show-overflow-tooltip />
+        <!-- @vue-generic {VirtualModel} -->
         <el-table-column label="Enabled" width="100"><template #default="{ row }"><el-switch :model-value="row.enabled" :disabled="busy" :loading="pending === 'toggle:' + row.id" :aria-label="'Enable ' + row.name" @change="toggleVirtualModel(row)" /></template></el-table-column>
+        <!-- @vue-generic {VirtualModel} -->
         <el-table-column label="Actions" width="130" fixed="right">
           <template #default="{ row }">
             <el-button :icon="Edit" text title="Edit" aria-label="Edit virtual model" :disabled="busy" @click="editor = { resource: 'virtual-models', record: row }" />
@@ -202,7 +208,9 @@ onMounted(() => { if (store.apiKey) void refresh() })
         <el-table-column label="Provider model" min-width="180"><template #default="{ row }">{{ modelName(row.providerModelId) }}</template></el-table-column>
         <el-table-column prop="priority" label="Priority" width="90" />
         <el-table-column prop="targetProtocol" label="Target protocol" min-width="180" />
+        <!-- @vue-generic {Binding} -->
         <el-table-column label="Enabled" width="100"><template #default="{ row }"><el-switch :model-value="row.enabled" :disabled="busy" :loading="pending === 'toggle:' + row.id" :aria-label="'Enable binding for ' + virtualModelName(row.virtualModelId)" @change="toggleBinding(row)" /></template></el-table-column>
+        <!-- @vue-generic {Binding} -->
         <el-table-column label="Actions" width="130" fixed="right">
           <template #default="{ row }">
             <el-button :icon="Edit" text title="Edit" aria-label="Edit binding" :disabled="busy" @click="editor = { resource: 'bindings', record: row }" />
